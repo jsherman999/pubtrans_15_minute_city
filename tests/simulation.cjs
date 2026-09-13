@@ -70,3 +70,53 @@ console.log('PASS: 12 randomized worlds, 80 suburban homes, directed connectivit
  `);
 }
 console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, native cockpit rendering and map picking.');
+
+{
+ const {run,elements}=boot();
+ assert.equal(run('countCars("bus")'),4);
+ assert.equal(run('developments.every((_,i)=>cars.filter(c=>c.kind==="bus"&&c.development===i&&c.capacity===20&&c.color===COLORS.bus).length===1)'),true);
+ run(`
+   humans.length=0; queue.length=0;
+   cars.splice(0,cars.length,...cars.filter(c=>c.kind==='bus'));
+   const home=developments[0].homes[0],school=buildingByName('Hillside');
+   function request(from,to){return {id:nextReqId++,human:{id:-1},from,to,pickupId:from.accessId,dropoffId:to.accessId,requestedAt:simMinute};}
+   for(let i=0;i<25;i++) queue.push(request(home,school));
+   queue.push(request(school,home));
+   queue.push(request(developments[1].homes[0],developments[1].homes[2]));
+   queue.push(request(developments[1].homes[0],developments[2].homes[0]));
+   dispatch();
+   const serviceBus=cars.find(c=>c.development===0);
+   if(serviceBus.pickupQueue.length!==20) throw Error('bus must pool 20 passengers');
+   if(cars.filter(c=>c.state!=='idle').length!==1) throw Error('wrong neighborhood bus dispatched');
+   if(queue.length!==8) throw Error('opposite direction/local/cross-region demand should remain queued');
+   for(let t=0;t<2000 && serviceBus.state!=='idle';t++) {stepCars(20);tickStoplights();
+     if(serviceBus.riders.length>20) throw Error('bus over capacity');
+   }
+   if(completedTrips.length!==20) throw Error('bus did not complete full load');
+   queue.splice(0,queue.length,...queue.filter(r=>r.from===school));
+   dispatch();
+   if(serviceBus.pickupQueue.length!==1 || serviceBus.pickupQueue[0].to!==home) throw Error('outbound service missing');
+   addCars('bus',1);
+   if(cars.filter(c=>c.kind==='bus'&&c.development===0).length!==2) throw Error('extra bus not balanced');
+   removeCars('bus',1);
+   if(countCars('bus')!==4) throw Error('bus control count wrong');
+   // Request retirement of the busy bus after removing other neighborhoods.
+   for(const c of cars) if(c!==serviceBus)c.retiring=true;
+   retireFinishedBuses();
+   removeCars('bus',1);
+   if(!serviceBus.retiring || !cars.includes(serviceBus)) throw Error('busy bus must finish service');
+   if(countCars('bus')!==0) throw Error('retiring bus should not count as available');
+   for(let t=0;t<2000 && cars.includes(serviceBus);t++){stepCars(20);tickStoplights();retireFinishedBuses();}
+   if(completedTrips.length!==21 || cars.includes(serviceBus)) throw Error('retirement lost rider or failed');
+   if(Object.values(edges).some(e=>e.claims.has(serviceBus.id))) throw Error('retired bus left road claims');
+   addCars('bus',4);
+   if(!developments.every((_,i)=>cars.filter(c=>c.kind==='bus'&&c.development===i).length===1)) throw Error('restored fleet must serve all neighborhoods');
+ `);
+ elements.get('sim-controls').click({target:{dataset:{act:'bus-inc'}}});
+ assert.equal(run('countCars("bus")'),5);
+ elements.get('sim-controls').click({target:{dataset:{act:'bus-dec'}}});
+ assert.equal(run('countCars("bus")'),4);
+ elements.get('reset').click();
+ assert.equal(run('cars.filter(c=>c.kind==="bus").every(c=>c.capacity===20&&c.state==="idle")'),true);
+}
+console.log('PASS: four assigned buses, 20-rider pooling, inbound/outbound service, neighborhood restrictions, balanced fleet controls, safe retirement and reset.');

@@ -25,6 +25,12 @@ Canvas backing buffers follow CSS display dimensions multiplied by device pixel 
 
 Rail is a visual layer, separate from the drivable graph. Passenger-count markers interpolate along it during the ten simulated minutes before each train event; the existing event scheduler injects passengers at arrival. Reset now clears event fired flags and the active banner as well as trips.
 
+## Dedicated neighborhood buses
+
+`makeCar("bus", id, development)` creates a purple 20-seat vehicle. `busDirection` restricts automatic bus assignments to inbound or outbound trips for its neighborhood. Before the original dispatch phases, available buses group eligible requests in the oldest request's direction and pass up to 20 requests to the existing multi-stop boarding/routing state machine. The remainder flows through the original sedan/shuttle phases.
+
+Bus counts and availability exclude vehicles marked `retiring`. Such vehicles complete their already assigned service; `retireFinishedBuses` removes them only when no passengers or pickups remain and clears all their road claims and viewing references. Additional buses fill the least-served development and removals favor the most-served, keeping coverage balanced. The live panel reports both assignments and pending retirements.
+
 ## Scope and assumptions
 
 This remains an illustrative simulation, not an engineering traffic or accessibility model. The source's profiles, fleet, pooling strategy, traffic behavior and optional API narration are preserved. Routing still uses a simple Dijkstra queue and approximate alternate paths; “congestion” means route claims, not measured road capacity. Travel timing retains the source's calibration. No external map tiles, backend, geolocation or geographic dataset is needed.
