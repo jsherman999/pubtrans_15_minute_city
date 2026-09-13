@@ -21,6 +21,8 @@ Four separate outward sectors with randomized offsets and gaps avoid overlapping
 
 Six independent view transforms share the same live state. Pointer coordinates are inverted through the selected view before picking a car or building. Only onscreen maps render each tick to limit phone workload. The sidebar cockpit remains based on world coordinates. Native document scrolling and sticky shortcuts replace the original viewport-locked layout.
 
+Canvas backing buffers follow CSS display dimensions multiplied by device pixel ratio, while map coordinates (780 × 780) and POV projection coordinates (640 × 640) stay fixed. Each visible frame checks sizing, so window resizing, browser zoom and monitor density changes redraw at native resolution. The POV buffer matches the cockpit pixel-for-pixel; metrics use the same sizing helper. Unchanged buffers are reused.
+
 Rail is a visual layer, separate from the drivable graph. Passenger-count markers interpolate along it during the ten simulated minutes before each train event; the existing event scheduler injects passengers at arrival. Reset now clears event fired flags and the active banner as well as trips.
 
 ## Scope and assumptions

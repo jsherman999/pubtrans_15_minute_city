@@ -37,3 +37,36 @@ for(let trial=0;trial<12;trial++) {
  if(!kShortest(developments[0].homes[0].accessId,developments[3].homes[19].accessId).length)throw Error('regional route missing');`);
 }
 console.log('PASS: 12 randomized worlds, 80 suburban homes, directed connectivity, local/cross-region routes, capacity, road-only vehicle positions, completed rides, train events and reset.');
+
+// Rendering must follow CSS size × DPR without changing logical coordinates,
+// reallocating unchanged buffers, or scaling a low-resolution cockpit image.
+{
+ const {run}=boot();
+ run(`
+   const probe={_width:0,_height:0,writes:0,transform:[],
+     get width(){return this._width},set width(v){this._width=v;this.writes++},
+     get height(){return this._height},set height(v){this._height=v;this.writes++},
+     getContext(){return {setTransform:(...args)=>this.transform=args}}};
+   for(const [width,height,dpr] of [[1900,1900,2],[350,350,3],[1024.5,1024.5,1.25],[640,480,1]]) {
+     window.devicePixelRatio=dpr;
+     sizeDrawingSurface(probe,780,780,{width,height});
+     if(probe.width!==Math.round(width*dpr)||probe.height!==Math.round(height*dpr)) throw Error('wrong pixel resolution');
+     if(probe.transform[0]!==probe.width/780||probe.transform[3]!==probe.height/780) throw Error('wrong logical transform');
+     const writes=probe.writes;
+     sizeDrawingSurface(probe,780,780,{width,height});
+     if(probe.writes!==writes) throw Error('unnecessary buffer allocation');
+   }
+   window.devicePixelRatio=3;
+   renderCockpit();
+   if(fpvCanvas.width!==cockpitCanvas.width || fpvCanvas.height!==cockpitCanvas.height) throw Error('cockpit upsampled');
+   if(FPV_W!==640 || FPV_H!==640) throw Error('projection coordinates changed');
+   // Pointer selection remains in logical coordinates at the new resolution.
+   mode='interactive';
+   const centerView=mapViews.find(v=>v.id==='center');
+   const building=BUILDINGS[0], point=buildingCenter(building);
+   handleMapClick({clientX:point[0]*centerView.scale+centerView.tx,
+     clientY:point[1]*centerView.scale+centerView.ty},centerView);
+   if(ix.source!==building) throw Error('high-DPI picking broken');
+ `);
+}
+console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, native cockpit rendering and map picking.');

@@ -1847,10 +1847,23 @@ async function narrateDecision(d) {
 let ctx = canvas.getContext("2d");
 let viewScale=1;
 
+// Keep drawing coordinates independent from the physical display pixels.
+// Recheck on each visible frame: resizing, browser zoom and moving between
+// monitors can change the CSS size or pixel ratio without reloading the page.
+function sizeDrawingSurface(target, logicalWidth, logicalHeight, rect = target.getBoundingClientRect()) {
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (target.width !== width) target.width = width;
+  if (target.height !== height) target.height = height;
+  target.getContext("2d").setTransform(width / logicalWidth, 0, 0, height / logicalHeight, 0, 0);
+}
+
 function render() {
   for (const view of mapViews) {
     const rect=view.canvas.getBoundingClientRect();
     if (rect.bottom<0 || rect.top>window.innerHeight) continue;
+    sizeDrawingSurface(view.canvas, CANVAS, CANVAS, rect);
     ctx=view.canvas.getContext("2d"); viewScale=view.scale;
     ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,780,780);
     ctx.save();ctx.translate(view.tx,view.ty);ctx.scale(view.scale,view.scale);
@@ -2240,8 +2253,9 @@ const cockpitCanvas = document.getElementById("cockpit");
 const cockpitCtx = cockpitCanvas.getContext("2d");
 let featuredCar = null;
 let featuredTimer = 0;
-const FPV_W = fpvCanvas.width;
-const FPV_H = fpvCanvas.height;
+// Perspective projection uses fixed logical coordinates, not backing pixels.
+const FPV_W = 640;
+const FPV_H = 640;
 const FPV_FOV_RAD = 75 * Math.PI / 180;
 const FPV_FOCAL = (FPV_W / 2) / Math.tan(FPV_FOV_RAD / 2);
 const FPV_HORIZON = FPV_H * 0.52;
@@ -2430,9 +2444,14 @@ function updateCockpitFocal() {
 // Always-on cockpit pane in the sidebar.
 function renderCockpit() {
   const focal = cockpitCar;
-  // Reuse the buffer if the main view already drew this same car this tick.
+  // Render the offscreen scene at the cockpit's native resolution, then copy
+  // pixels 1:1. Enlarging the original 640px buffer would still look blurry.
+  const rect = cockpitCanvas.getBoundingClientRect();
+  sizeDrawingSurface(cockpitCanvas, FPV_W, FPV_H, rect);
+  sizeDrawingSurface(fpvCanvas, FPV_W, FPV_H, rect);
   renderFPV(focal);
-  cockpitCtx.drawImage(fpvCanvas, 0, 0, cockpitCanvas.width, cockpitCanvas.height);
+  cockpitCtx.setTransform(1, 0, 0, 1, 0, 0);
+  cockpitCtx.drawImage(fpvCanvas, 0, 0);
 
   const labelEl = document.getElementById("cockpit-car");
   const capEl = document.getElementById("cockpit-cap");
@@ -3050,12 +3069,9 @@ const gctx = graphCanvas.getContext("2d");
 let gW = 0, gH = 0;
 function sizeGraphCanvas() {
   const rect = graphCanvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  gW = Math.max(1, Math.round(rect.width));
-  gH = Math.max(1, Math.round(rect.height));
-  graphCanvas.width = Math.round(gW * dpr);
-  graphCanvas.height = Math.round(gH * dpr);
-  gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  gW = Math.max(1, rect.width);
+  gH = Math.max(1, rect.height);
+  sizeDrawingSurface(graphCanvas, gW, gH, rect);
 }
 window.addEventListener("resize", sizeGraphCanvas);
 
@@ -3070,6 +3086,7 @@ function sampleMetrics() {
 }
 
 function renderMetricsGraph() {
+  sizeGraphCanvas();
   document.getElementById("g-active").textContent = latestMetrics.active;
   document.getElementById("g-queued").textContent = latestMetrics.queued;
   document.getElementById("g-pooled").textContent = latestMetrics.pooled;
