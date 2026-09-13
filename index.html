@@ -3290,7 +3290,7 @@ document.getElementById("api-key").addEventListener("input", updateApiKeyStatus)
 // ============================================================
 // Live fleet & demand controls
 // ============================================================
-const POP_MAX = 300, POP_STEP = 10, CAR_MAX = 60;
+const POP_MAX = 500, POP_STEP = 10, CAR_MAX = 60;
 function countCars(kind) { let n = 0; for (const c of cars) if (c.kind === kind && !c.retiring) n++; return n; }
 
 function addHumans(n) {
