@@ -30,6 +30,16 @@ Each development starts with one dedicated 20-seat bus. Buses get first choice o
 
 Fleet & demand has a separate bus count, active count and +/− controls, plus a live breakdown by neighborhood. Added buses go to the least-served neighborhood. Removal reduces the most-served neighborhood first, using an idle bus when possible. Busy buses finish their assigned pickups and dropoffs before leaving the simulation; the panel shows pending retirements. Bus assignments survive Reset day. Purple, larger map vehicles and the driver POV caption identify buses and their assigned development.
 
+## Ride sharing control
+
+In Fleet & demand, **Ride sharing** starts at **0% (baseline)**, retaining fixed trips and the original pooling. Raise it to allow buses and shuttles already out on the road to collect additional **unassigned** requests along their remaining service or return to Central Station. Try 50% first; increase if you prefer more pooling over direct trips.
+
+- 10% permits up to 40 m of additional driving per trip; 50% permits 200 m; 100% permits 400 m. Boarding stops add time beyond this distance budget.
+- Existing pickup/dropoff order is preserved. Capacity accounts for passengers aboard and promised pickups at every future stop. A newly added request always has a pickup before its dropoff.
+- Buses still serve only trips between their assigned development and center. Retiring buses and interactive vehicles do not accept opportunistic riders.
+- The planner includes the return to Central Station when evaluating savings, allowing an outbound vehicle to collect inbound riders on its way back. The vehicle keeps its current position when the plan changes.
+- A live count shows on-the-way pickups assigned, and the debug stream explains each added ride and its extra distance. Existing assigned riders keep their vehicle; the control does not transfer reservations from other cars. Turning the slider back to zero stops further additions but honors trips already accepted.
+
 ## Run locally
 
 Open `index.html` directly, or:

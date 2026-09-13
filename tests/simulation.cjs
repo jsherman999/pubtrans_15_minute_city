@@ -120,3 +120,73 @@ console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, n
  assert.equal(run('cars.filter(c=>c.kind==="bus").every(c=>c.capacity===20&&c.state==="idle")'),true);
 }
 console.log('PASS: four assigned buses, 20-rider pooling, inbound/outbound service, neighborhood restrictions, balanced fleet controls, safe retirement and reset.');
+
+{
+ const {run}=boot();
+ run(`
+   dbg=()=>{};humans.length=0;queue.length=0;
+   const sharingBus=cars.find(c=>c.kind==='bus'&&c.development===0);
+   const home=developments[0].homes[0],hub=buildingByName('Central Stn');
+   const original={id:nextReqId++,human:{id:-1},from:hub,to:home,pickupId:hub.accessId,dropoffId:home.accessId,requestedAt:simMinute};
+   assignMultiStop(sharingBus,[original],'TEST');
+   // Complete boarding, then sample an exact mid-edge position.
+   for(let i=0;i<100 && sharingBus.state!=='enroute_dropoff';i++)stepCars(1,sharingBus);
+   stepCars(1,sharingBus);
+   const before={...sharingBus.pos};
+   const back={id:nextReqId++,human:{id:-1},from:home,to:hub,pickupId:home.accessId,dropoffId:hub.accessId,requestedAt:simMinute};
+   queue.push(back);
+   if(tryShareRide(sharingBus)) throw Error('baseline sharing must be off');
+   rideSharing=100;
+   if(!tryShareRide(sharingBus)) throw Error('return rider should be admitted while delivering outbound rider');
+   if(Math.hypot(sharingBus.pos.x-before.x,sharingBus.pos.y-before.y)>1e-8) throw Error('sharing teleported vehicle');
+   if(queue.length || !sharingBus.pickupQueue.includes(back)) throw Error('request ownership incorrect');
+   if(!sharingCapacity(sharingBus,[sharingBus._activeSeg,...sharingBus._segments])) throw Error('capacity invalid');
+   for(let t=0;t<3000 && sharingBus.state!=='idle';t++){stepCars(20,sharingBus);tickStoplights();}
+   if(completedTrips.length!==2 || sharingBus.nodeId!==CENTRAL_NODE) throw Error('original and return riders must arrive at correct stops');
+   if(sharingBus.pickupQueue.length || sharingBus.riders.length) throw Error('sharing left passengers behind');
+   // An empty returning shuttle can also collect along its current road.
+   const shuttle=cars.find(c=>c.kind==='shuttle');
+   shuttle.nodeId=home.accessId;shuttle.pos={x:nodeXY(home.accessId)[0],y:nodeXY(home.accessId)[1]};
+   setRoute(shuttle,dijkstra(shuttle.nodeId,CENTRAL_NODE));shuttle.state='returning';
+   const next=shuttle.route.nodes[1];
+   const curb={name:'Roadside test stop',accessId:next,development:0};
+   const ride={...back,id:nextReqId++,from:curb,pickupId:next};queue.push(ride);
+   if(!tryShareRide(shuttle)) throw Error('returning shuttle ignored on-route pickup');
+   for(let t=0;t<3000 && shuttle.state!=='idle';t++){stepCars(20,shuttle);tickStoplights();}
+   if(completedTrips.length!==3) throw Error('shuttle rider not delivered');
+   if(Object.values(edges).some(e=>e.claims.has(shuttle.id))) throw Error('sharing left stale claims');
+   // Promised pickups consume capacity, not just people already aboard.
+   const fullStops=[{type:'pickup',reqs:Array.from({length:9},()=>({}))},{type:'dropoff',reqs:Array.from({length:9},()=>({}))}];
+   if(sharingCapacity(shuttle,fullStops)) throw Error('overbooked shuttle');
+   sharingBus.retiring=true;queue.push({...back,id:nextReqId++});
+   if(tryShareRide(sharingBus)) throw Error('retiring bus accepted rider');
+   sharingBus.retiring=false;
+   if(busDirection(sharingBus,{from:developments[1].homes[0],to:hub}))throw Error('wrong neighborhood allowed');
+ `);
+}
+console.log('PASS: baseline off, mid-edge continuity, outbound-to-return insertion, returning shuttle pickup, promised capacity, rider delivery and claim cleanup.');
+{
+ const {run}=boot();
+ run(`
+   render=()=>{};renderCockpit=()=>{};renderMetricsGraph=()=>{};dbg=()=>{};
+   addHumans(400);rideSharing=100;speedMult=20;
+   for(let t=0;t<160;t++) {
+     tick();
+     const assigned=new Set();
+     for(const car of cars){
+       if(car.riders.length>car.capacity)throw Error('over capacity in busy shared simulation');
+       for(const r of [...car.pickupQueue,...car.riders]) {
+         if(assigned.has(r.id))throw Error('duplicate assignment');assigned.add(r.id);
+       }
+       if(car.route && car.routeIndex<car.route.edges.length){
+         const a=nodeXY(car.route.nodes[car.routeIndex]),b=nodeXY(car.route.nodes[car.routeIndex+1]);
+         const cross=(car.pos.x-a[0])*(b[1]-a[1])-(car.pos.y-a[1])*(b[0]-a[0]);
+         if(Math.abs(cross)>1e-5)throw Error('shared car off road');
+       }
+     }
+     if(queue.some(r=>assigned.has(r.id)))throw Error('queued rider also assigned');
+   }
+   if(!sharedPickups || !completedTrips.length)throw Error('sharing never ran');
+ `);
+}
+console.log('PASS: 500-person shared simulation, road continuity, capacity, exclusive request ownership and completed rides.');

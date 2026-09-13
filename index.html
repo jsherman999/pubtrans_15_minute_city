@@ -251,6 +251,10 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <div class="stepper-btns"><button data-act="bus-dec" aria-label="Remove large bus">−</button><span id="ctl-bus">4</span><span class="active-count" id="ctl-bus-active" title="currently active (out of the depot)">0</span><button data-act="bus-inc" aria-label="Add large bus">+</button></div>
       </div>
       <p class="hint small" id="bus-assignments"></p>
+      <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="0"><span id="ride-sharing-value">0%</span></div>
+      <div class="row"><span>On-the-way pickups assigned</span><span id="shared-pickups">0</span></div>
+      <p class="hint small" id="ride-sharing-hint">Baseline: trips are fixed when dispatched.</p>
+      <p class="hint small">Higher settings let buses and shuttles add unassigned waiting riders along their route or return to the center. Existing stops stay in order; seats already promised to waiting riders are reserved.</p>
       <p class="hint small">Purple buses serve their assigned neighborhood ↔ city center all day, including schools and events. Added buses go to the least-served neighborhood. Removed buses finish assigned trips first.</p>
       <p class="hint small">Adjusts the running sim live. Removing vehicles frees idle ones first; waiting riders are re-queued.</p>
     </section>
@@ -886,6 +890,122 @@ function nearestOrder(start, ids) {
   return order;
 }
 
+// Opportunistic insertion keeps every existing stop, pickup-before-dropoff,
+// and capacity commitment. Replanning starts at the next road node, never
+// moving a vehicle backward along its current edge.
+let rideSharing = 0;
+let sharingCursor = 0;
+let sharedPickups = 0;
+function routeDistance(route) { return route.edges.reduce((sum,k)=>sum+edges[k].length,0); }
+function sharingStops(car) {
+  if(car.state === "idle" || car.state === "returning") return [{type:"depot",node:CENTRAL_NODE,reqs:[]}];
+  const stops=[car._activeSeg,...(car._segments || [])].filter(Boolean).map(s=>({type:s.type,node:s.node,reqs:s.reqs}));
+  if(stops.length && stops.at(-1).type!=="depot") stops.push({type:"depot",node:CENTRAL_NODE,reqs:[]});
+  return stops;
+}
+function sharingCapacity(car, stops) {
+  let load=car.riders.length;
+  for(const stop of stops) {
+    if(stop.type==="pickup") load+=stop.reqs.length;
+    if(stop.type==="dropoff") load-=stop.reqs.length;
+    if(load<0 || load>car.capacity) return false;
+  }
+  return load===0;
+}
+function tryShareRide(car) {
+  if(!rideSharing || !queue.length || car.interactive || car.retiring || !["bus","shuttle"].includes(car.kind)) return false;
+  if(!["idle","returning","enroute_pickup","enroute_dropoff"].includes(car.state)) return false;
+  if(car.state==="idle" && car.nodeId===CENTRAL_NODE) return false;
+  const moving=car.route && car.routeIndex<car.route.edges.length;
+  const anchor=moving ? car.route.nodes[car.routeIndex+1] : car.nodeId;
+  const stops=sharingStops(car);
+  if(!stops.length) return false;
+  const cache=new Map();
+  function route(a,b) {
+    const key=a+":"+b;
+    if(!cache.has(key)) cache.set(key,dijkstra(a,b));
+    return cache.get(key);
+  }
+  function plan(list) {
+    let cursor=anchor,distance=0; const segments=[];
+    for(const stop of list) {
+      const leg=route(cursor,stop.node); if(!leg) return null;
+      distance+=routeDistance(leg);segments.push({...stop,route:leg});cursor=stop.node;
+    }
+    return {segments,distance};
+  }
+  const base=plan(stops); if(!base) return false;
+  // A trip-wide distance budget prevents repeated admissions from accumulating
+  // unlimited detours. 100% allows 400m extra; 10% allows 40m.
+  const allowance=4*rideSharing/100-(car._sharingDetour || 0);
+  if(allowance<0) return false;
+  const points=[nodeXY(anchor),...stops.map(s=>nodeXY(s.node))];
+  if(moving) for(const n of car.route.nodes.slice(car.routeIndex+1)) points.push(nodeXY(n));
+  const proximity=r=>{const p=nodeXY(r.pickupId);return Math.min(...points.map(q=>Math.hypot(p[0]-q[0],p[1]-q[1])));};
+  const candidates=queue.filter(r=>car.kind!=="bus" || busDirection(car,r))
+    .map(r=>({r,near:proximity(r)})).sort((a,b)=>a.near-b.near || a.r.requestedAt-b.r.requestedAt).slice(0,12);
+  // Always include the return end even on a long multi-stop service.
+  const last=stops.at(-1).type==="depot" ? stops.length-1 : stops.length;
+  const slots=[...new Set([...Array.from({length:Math.min(last+1,6)},(_,i)=>i),last])];
+  for(const {r} of candidates) {
+    let best=null;
+    for(const pickup of slots) for(const drop of slots.filter(i=>i>=pickup)) {
+      const list=stops.slice();
+      list.splice(drop,0,{type:"dropoff",node:r.dropoffId,reqs:[r]});
+      list.splice(pickup,0,{type:"pickup",node:r.pickupId,reqs:[r]});
+      if(!sharingCapacity(car,list)) continue;
+      const proposal=plan(list);if(!proposal) continue;
+      const extra=Math.max(0,proposal.distance-base.distance);
+      // Limit travel added before each promised stop, too: a later saving must
+      // not hide a long detour imposed on a passenger already aboard.
+      let proposedTravel=0,originalTravel=0,oldIndex=0,valid=true;
+      for(const seg of proposal.segments) {
+        proposedTravel+=routeDistance(seg.route);
+        if(seg.reqs!==stops[oldIndex]?.reqs) continue;
+        originalTravel+=routeDistance(base.segments[oldIndex++].route);
+        if(proposedTravel-originalTravel>allowance+1e-7) {valid=false;break;}
+      }
+      if(!valid || extra>allowance+1e-7) continue;
+      if(!best || proposal.distance<best.distance) best={...proposal,extra};
+    }
+    if(!best) continue;
+    const progress=car.progress,oldNode=car.nodeId;
+    // Preserve the current edge and its exact fractional position.
+    if(moving) {
+      const first=best.segments[0].route;
+      const key=car.route.edges[car.routeIndex];
+      best.segments[0].route={nodes:[oldNode,...first.nodes],edges:[key,...first.edges],cost:first.cost+edges[key].length};
+    }
+    for(const edge of Object.values(edges)) edge.claims.delete(car.id);
+    for(const seg of best.segments) claimRoute(car,seg.route);
+    car.pickupQueue.push(r);
+    car._segments=best.segments;
+    car._activeSeg=car._segments.shift();
+    car.state=car._activeSeg.type==="pickup" ? "enroute_pickup" : "enroute_dropoff";
+    setRoute(car,car._activeSeg.route);
+    if(moving) {car.progress=progress;updateCarXY(car);}
+    car._sharingDetour=(car._sharingDetour || 0)+best.extra;
+    queue.splice(queue.indexOf(r),1);sharedPickups++;pooledCount++;
+    dbg("POOL",car.id+" on-the-way pickup r#"+r.id+" at "+r.from.name+" → "+r.to.name+" · +"+(best.extra*100).toFixed(0)+"m · sharing "+rideSharing+"%");
+    return true;
+  }
+  return false;
+}
+function shareQueuedRides() {
+  if(!rideSharing || !queue.length) return;
+  const fleet=cars.filter(c=>["bus","shuttle"].includes(c.kind) && !c.retiring);
+  // Bounded work per tick, rotating through the fleet on phones and large runs.
+  for(let i=0;i<Math.min(4,fleet.length);i++) tryShareRide(fleet[(sharingCursor+i)%fleet.length]);
+  sharingCursor=fleet.length ? (sharingCursor+4)%fleet.length : 0;
+}
+document.getElementById("ride-sharing").addEventListener("input",e=>{
+  rideSharing=Number(e.target.value);
+  document.getElementById("ride-sharing-value").textContent=rideSharing+"%";
+  document.getElementById("ride-sharing-hint").textContent=rideSharing ?
+    "On-the-way pickups · up to "+(rideSharing*4)+"m extra driving per trip. Boarding stops also add time." :
+    "Baseline: trips are fixed when dispatched.";
+});
+
 // Dedicated buses carry either inbound or outbound riders for their own
 // neighborhood. Local and cross-neighborhood trips remain with smaller vehicles.
 function busDirection(bus, request) {
@@ -999,6 +1119,7 @@ function returnIdleCars() {
 // (nearest-neighbor order), then alight them grouped by destination
 // (nearest-neighbor order). Used for sedans, pools, and sweeps alike.
 function assignMultiStop(car, reqs, tag) {
+  car._sharingDetour=0;
   const pickups = new Map();   // pickupId -> reqs[]
   const drops = new Map();     // dropoffId -> reqs[]
   for (const r of reqs) {
@@ -1170,13 +1291,14 @@ function advanceSegment(car) {
   const next = car._segments.shift();
   car._activeSeg = next;
   if (!next) { finishTrip(car); return; }
-  car.state = (next.type === "dropoff") ? "enroute_dropoff" : "enroute_pickup";
+  car.state = next.type === "depot" ? "returning" : (next.type === "dropoff") ? "enroute_dropoff" : "enroute_pickup";
   setRoute(car, next.route);
 }
 
 function arriveAtRouteEnd(car) {
   // Reached the depot after repositioning — park (idle) at Central Stn.
   if (car.state === "returning") {
+    if(car._activeSeg?.type === "depot") { finishTrip(car); return; }
     car.route = null;
     car.state = "idle";
     car._idleSince = simMinute;
@@ -1229,6 +1351,7 @@ function arriveAtRouteEnd(car) {
 }
 
 function finishTrip(car) {
+  car._sharingDetour=0;
   if (car.riders.length > 0) {
     const destName = car.riders[0].to ? car.riders[0].to.name : (ix.dest ? ix.dest.name : "destination");
     const avgWait = car.riders.reduce((s, r) => s + (simMinute - r.requestedAt), 0) / car.riders.length;
@@ -3043,6 +3166,7 @@ function drawFPVHUD(car) {
 // HUD
 // ============================================================
 function updateHUD() {
+  document.getElementById("shared-pickups").textContent=sharedPickups;
   document.getElementById("clock").textContent = clockStr();
   let active = 0;
   let sedParked = 0, shuParked = 0, busParked = 0;   // idle and parked at the depot (not "out")
@@ -3203,6 +3327,7 @@ function tick() {
     }
     checkSchedules();
     tickEvents();
+    shareQueuedRides();
     dispatch();
     returnIdleCars();
     tickStoplights();
@@ -3238,6 +3363,7 @@ document.getElementById("pause").addEventListener("click", () => {
 document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
   simMinute = DAY_START;
+  sharedPickups=0;
   for(const evt of eventSchedule) evt.fired=false;
   currentEvent=null;
   queue.length = 0;
@@ -3249,6 +3375,7 @@ document.getElementById("reset").addEventListener("click", () => {
   autoObstacleSpawnTimer = 60;
   for (const c of cars) {
     c.state = "idle";
+    c._sharingDetour=0;
     c.nodeId = CENTRAL_NODE;                 // re-park the whole fleet at the depot
     const [cx, cy] = nodeXY(CENTRAL_NODE);
     c.pos.x = cx; c.pos.y = cy;

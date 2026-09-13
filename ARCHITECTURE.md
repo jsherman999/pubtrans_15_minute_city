@@ -31,6 +31,12 @@ Rail is a visual layer, separate from the drivable graph. Passenger-count marker
 
 Bus counts and availability exclude vehicles marked `retiring`. Such vehicles complete their already assigned service; `retireFinishedBuses` removes them only when no passengers or pickups remain and clears all their road claims and viewing references. Additional buses fill the least-served development and removals favor the most-served, keeping coverage balanced. The live panel reports both assignments and pending retirements.
 
+## Opportunistic ride sharing
+
+`shareQueuedRides` runs before ordinary dispatch when the 0–100% slider is enabled. It rotates through at most four buses/shuttles per tick. `tryShareRide` considers up to 12 nearby unassigned requests, inserts pickup/dropoff pairs into a bounded set of stop positions, and includes the final depot return in its distance comparison. Directed Dijkstra routes are cached within each vehicle evaluation. Capacity is checked over the entire stop sequence, including future reservations.
+
+Existing stop order is immutable. Both total added driving and added driving before each existing stop must fit the remaining trip budget (up to four 100 m blocks at 100%). The accumulated extra distance is tracked until trip completion. Boarding time is additional and explicitly disclosed in the control. Replanning preserves the current edge and fractional progress; all road claims are replaced for the updated itinerary. Retiring and interactive vehicles are excluded, and buses retain neighborhood eligibility. A depot segment completes the shared trip through the existing vehicle state machine.
+
 ## Scope and assumptions
 
 This remains an illustrative simulation, not an engineering traffic or accessibility model. The source's profiles, fleet, pooling strategy, traffic behavior and optional API narration are preserved. Routing still uses a simple Dijkstra queue and approximate alternate paths; “congestion” means route claims, not measured road capacity. Travel timing retains the source's calibration. No external map tiles, backend, geolocation or geographic dataset is needed.
