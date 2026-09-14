@@ -24,6 +24,20 @@ The fleet starts with 15 sedans (4 seats), 14 shuttles (8 seats), and five large
 
 Optional Anthropic narration still uses the source app's direct browser API call. Paste a key in Settings; it is held in memory and cleared by refresh. Core simulation needs no API key. The optional paid API call is not covered by the automated tests.
 
+## Distance and simulation time
+
+The center is **6 × 6 blocks (36 blocks)**, each 100 m long. Movement is calculated from actual road length and explicit cruising speeds: **20 km/h (12 mph)** on neighborhood roads, **25 km/h (16 mph)** downtown, and **35 km/h (22 mph)** on connecting roads. One mile at those speeds takes about 4.8, 3.9, or 2.8 minutes of uninterrupted driving, respectively.
+
+Each simulation step represents **3 seconds**. Boarding takes one step per passenger, plus a step to finish boarding; stop signs hold for 3 seconds, traffic signals have 30-second green/red phases with 3-second transitions, and obstacle responses take 6–9 seconds. Passenger ride time still includes the time spent aboard during other pickups, stops and detours. These are illustrative operating assumptions, not measured local transit performance.
+
+The playback slider repeats complete simulation steps: **1× and 20× produce the same simulated ride durations**, but at different viewing speeds. At 1×, each nominal 100 ms display tick advances three simulated seconds (30 simulated seconds per real second); slow devices may take longer to process a tick.
+
+The old calibration moved vehicles at only 3 km/h and counted 18 seconds per boarding passenger at 1×. More seriously, playback speed multiplied the clock and motion but not boarding/stop timers, inflating their simulated duration at higher playback speeds. Both issues are corrected.
+
+Validation with 300 people, default fleet and 100% sharing, across three seeded 12-hour runs at 20×: average rides changed from **122–149 minutes** to **2.2–2.6 minutes**, with **992–1,020 completed riders**. These are overall averages including short city/apartment trips; longer neighborhood or pooled trips can take more time. Tests also compare identical seeded worlds at 1× and 20× and verify physical travel speeds.
+
+The chosen speeds are conservative relative to [NACTO urban target-speed guidance](https://nacto.org/publication/urban-street-design-guide/design-controls/design-speed/), which discusses 20 mph neighborhood zones. Boarding is modeled at 3 seconds per person; [NACTO's boarding guidance](https://nacto.org/publication/better-boarding-better-buses/) explains why dwell time must be accounted for separately from driving.
+
 ## Live ride statistics
 
 **Completed** counts every passenger delivered since Reset day and continues beyond 1,000. The separate diagnostic trip history retains only the latest 1,000 records to bound memory.

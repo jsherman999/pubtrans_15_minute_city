@@ -45,8 +45,12 @@ Existing stop order is immutable. Both total added driving and added driving bef
 
 ## Scope and assumptions
 
-This remains an illustrative simulation, not an engineering traffic or accessibility model. The source's profiles, fleet, pooling strategy, traffic behavior and optional API narration are preserved. Routing still uses a simple Dijkstra queue and approximate alternate paths; “congestion” means route claims, not measured road capacity. Travel timing retains the source's calibration. No external map tiles, backend, geolocation or geographic dataset is needed.
+This remains an illustrative simulation, not an engineering traffic or accessibility model. The source's profiles, fleet, pooling strategy, traffic behavior and optional API narration are preserved. Routing still uses a simple Dijkstra queue and approximate alternate paths; “congestion” means route claims, not measured road capacity. Travel timing uses explicit road speeds and fixed simulation steps. No external map tiles, backend, geolocation or geographic dataset is needed.
 
 ## Passenger timing and totals
 
 `simElapsed` advances monotonically while simulation time runs, independently of the daily display clock. Request timestamps, boarding timestamps and idle-depot timers use this clock. Each actual boarding calls `boardPassenger`; each delivered passenger calls `completePassenger` once. `completedCount` and `completedRideMinutes` accumulate without using the bounded history length. The HUD reports their ratio, while `completedTrips` retains only the latest 1,000 per-person ride/wait records. Daily clock rollover preserves ongoing timestamps; Reset day resets the clocks and aggregates.
+
+## Calibrated simulation steps
+
+`roadPath` marks neighborhood edges at 20 km/h and connector edges at 35 km/h; center grid edges use 25 km/h. `stepCars` spends elapsed seconds against each traversed edge's distance and speed, carrying remaining time across short curve segments. `simulationStep` advances the clock, dispatch, boarding, signals, traffic waits and obstacles together by three seconds. `tick` repeats whole steps according to playback speed, then renders once. Thus playback speed cannot lengthen passenger boarding or signal delays in simulated minutes. A seeded regression compares complete vehicle/queue/ride state at 1× and 20×.

@@ -2,12 +2,14 @@ const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
 const assert=require('node:assert/strict');
 const source=readFileSync(new URL('../index.html',`file://${__filename}`),'utf8').split('<script>')[1].split('</script>')[0];
-function boot() {
+function boot(seed) {
+ const math=Object.create(Math);
+ if(seed!=null)math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  const elements=new Map();
  const context=new Proxy({}, {get:(o,k)=>k==='measureText'?()=>({width:40}):k==='createLinearGradient'?()=>({addColorStop(){}}):()=>{}});
  function el(){return {width:780,height:780,style:{},dataset:{},classList:{add(){},toggle(){}},setAttribute(){},append(){},appendChild(){},removeChild(){},addEventListener(t,f){this[t]=f;},getContext(){return context},getBoundingClientRect(){return {top:0,bottom:780,width:780,height:780,left:0}},value:'',textContent:'',innerHTML:'',children:[],scrollHeight:0};}
  const doc={getElementById(id){if(!elements.has(id)) elements.set(id,el());return elements.get(id)},querySelector(id){return this.getElementById(id)},createElement:el};
- const sandbox={document:doc,window:{innerHeight:900,performance:{},addEventListener(){}},navigator:{hardwareConcurrency:4},performance:{now:()=>0},setInterval(){},setTimeout(){},console,Math};
+ const sandbox={document:doc,window:{innerHeight:900,performance:{},addEventListener(){}},navigator:{hardwareConcurrency:4},performance:{now:()=>0},setInterval(){},setTimeout(){},console,Math:math};
  vm.createContext(sandbox);vm.runInContext(source,sandbox);
  return {run:s=>vm.runInContext(s,sandbox),elements};
 }
@@ -18,7 +20,7 @@ for(let trial=0;trial<12;trial++) {
  assert.equal(run('BUILDINGS.every(b=>dijkstra(CENTRAL_NODE,b.accessId) && dijkstra(b.accessId,CENTRAL_NODE))'),true);
  assert.equal(run('Object.values(edges).every(e=>Number.isFinite(e.length)&&e.length>0)'),true);
  run('render=()=>{};renderCockpit=()=>{};renderMetricsGraph=()=>{};dbg=()=>{};speedMult=20;');
- run(`for(let t=0;t<120;t++){ tick(); for(const c of cars){
+ run(`for(let t=0;t<400;t++){ tick(); for(const c of cars){
    if(!Number.isFinite(c.pos.x)||!Number.isFinite(c.pos.y))throw Error('invalid position');
    if(c.riders.length>c.capacity)throw Error('capacity exceeded');
    if(c.route && c.routeIndex<c.route.edges.length){
@@ -292,3 +294,26 @@ console.log('PASS: distinct passenger boarding times, excluded queue time, 1000+
  assert.equal(elements.get('avg-queue').textContent,'—');
 }
 console.log('PASS: running queue average includes assigned/unassigned riders, freezes at boarding, deduplicates, preserves request age and resets.');
+// The same seeded simulation must produce identical rides at different playback
+// speeds, including all boarding, signals, obstacles and shared-route decisions.
+{
+ const a=boot(12345),b=boot(12345);
+ for(const sim of [a,b])sim.run('render=()=>{};renderCockpit=()=>{};renderMetricsGraph=()=>{};dbg=()=>{};');
+ a.run('speedMult=1;for(let i=0;i<1200;i++)tick();');
+ b.run('speedMult=20;for(let i=0;i<60;i++)tick();');
+ const snapshot='JSON.stringify({elapsed:simElapsed,completed:completedCount,minutes:completedRideMinutes,queue:queue.map(r=>r.id),cars:cars.map(c=>[c.id,c.state,c.nodeId,c.progress,c.riders.map(r=>r.id)])})';
+ assert.equal(a.run(snapshot),b.run(snapshot));
+ // Verify a direct edge at each configured speed against distance/speed.
+ a.run(`
+   for(const kph of [20,25,35]) {
+     const car=makeCar('sedan','speed-test');const key=Object.keys(edges)[0],edge=edges[key];
+     edge.speedKph=kph;car.nodeId=edge.a;car.state='returning';
+     setRoute(car,{nodes:[edge.a,edge.b],edges:[key],cost:edge.length});
+     cars.push(car);let steps=0;
+     while(car.state!=='idle' && steps<100){stepCars(1,car);steps++;}
+     const expected=edge.length*100/(kph/3.6),actual=steps*SIM_MIN_PER_TICK*60;
+     if(actual<expected-1e-7 || actual-expected>3.0001)throw Error('physical speed mismatch');
+   }
+ `);
+ console.log('PASS: identical simulation at 1×/20× and distance-calibrated 20/25/35 km/h road speeds.');
+}

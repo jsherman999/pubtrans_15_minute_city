@@ -215,6 +215,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <h3>Controls</h3>
       <div class="row"><label>Speed</label><input type="range" id="speed" min="1" max="20" value="1"><span id="speed-val" style="min-width:32px;text-align:right">1×</span></div>
       <div class="btn-row"><button id="pause">Pause</button><button id="reset">Reset day</button></div>
+      <p class="hint small">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
       <p class="hint small" style="margin-top:8px">Click any active car on the map to spectate it (its POV opens in the Driver POV pane below; speed drops to 1×).</p>
     </section>
 
@@ -303,7 +304,7 @@ const POPULATION = 300;
 const N_SEDANS = 15;
 const N_SHUTTLES = 14;
 const K_PATHS = 3;
-const SIM_MIN_PER_TICK = 0.3;     // paired with baseStep 0.15 → ~6.7 ticks/block = 2 sim-min/block; brisk pace, realistic ~20-min rides
+const SIM_MIN_PER_TICK = 3 / 60;  // fixed 3-second simulation step; playback repeats whole steps
 const DAY_START = 7 * 60 + 30;    // 07:30 — start at the school rush so demand is immediate even at 1×
 const BASE_TICK_MS = 100;         // real-time tick interval
 const SENSOR_RANGE_PX = 60;
@@ -393,14 +394,14 @@ for (let r = 0; r < GRID_N; r++) {
 const METERS_PER_CELL = 100;
 let nextNode = GRID_N * GRID_N;
 function roadNode(x, y) { const id = nextNode++; extraNodes.set(id, [x,y]); return id; }
-function roadPath(a, points) {
+function roadPath(a, points, speedKph = 20) {
   if(points.length===2) {
     const start=nodeXY(a),control=points[0],end=points[1];
     points=Array.from({length:8},(_,i)=>{const t=(i+1)/8,q=1-t;
       return [q*q*start[0]+2*q*t*control[0]+t*t*end[0],q*q*start[1]+2*q*t*control[1]+t*t*end[1]];});
   }
   let previous = a;
-  for (const point of points) { const n = roadNode(...point); addEdge(previous,n); previous=n; }
+  for (const point of points) { const n = roadNode(...point); addEdge(previous,n); edges[edgeKey(previous,n)].speedKph=speedKph; previous=n; }
   return previous;
 }
 for (let side=0; side<5; side++) {
@@ -418,7 +419,7 @@ for (let side=0; side<5; side++) {
   const originV = gap+CELL*.6;
   const steps=Math.max(1,Math.ceil((gap+CELL*.6)/CELL));
   const entry = roadPath(gate, Array.from({length:steps},(_,i)=>
-    transform(offset*(i+1)/steps,originV*(i+1)/steps)));
+    transform(offset*(i+1)/steps,originV*(i+1)/steps)),35);
   const local = (u,v) => transform(offset+u,originV+v);
   const dev = { name, gapMeters, gate, entry, culDeSacs:[], homes:[], points:[nodeXY(entry)] };
   // Two winding boulevards, each with two short cul-de-sacs and five homes.
@@ -453,6 +454,7 @@ for (let side=0; side<5; side++) {
   developments.push(dev);
 }
 for (const e of Object.values(edges)) {
+  e.speedKph=e.speedKph || 25;
   const a=nodeXY(e.a),b=nodeXY(e.b); e.length=Math.hypot(a[0]-b[0],a[1]-b[1])/CELL;
 }
 const N_EDGES = Object.keys(edges).length;
@@ -491,7 +493,7 @@ function setupTrafficControls() {
     intersectionData[picked[i]] = {
       signal: "stoplight",
       phase: Math.floor(Math.random() * 4),
-      phaseTimer: 30 + Math.floor(Math.random() * 60),
+      phaseTimer: 1 + Math.floor(Math.random() * 10),
     };
   }
   for (let i = 4; i < 8 && i < picked.length; i++) {
@@ -526,7 +528,7 @@ function tickStoplights() {
     d.phaseTimer--;
     if (d.phaseTimer <= 0) {
       d.phase = (d.phase + 1) % 4;
-      d.phaseTimer = (d.phase === 1 || d.phase === 3) ? 12 : 80;
+      d.phaseTimer = (d.phase === 1 || d.phase === 3) ? 1 : 10;
     }
   }
 }
@@ -1317,16 +1319,17 @@ function stepCars(speedMult, filterCar = null) {
     }
     const slowFactor = (car._slowedTicks > 0) ? 0.4 : 1;
     if (car._slowedTicks > 0) car._slowedTicks--;
-    const baseStep = 0.15 * speedMult * slowFactor;   // ~6.7 ticks/block at 1×; paired with SIM_MIN_PER_TICK for ~20-min rides
-    // Convert traveled world distance into each segment's fraction (curves have short segments).
-    let remainingStep = baseStep;
+    // Spend elapsed seconds along the actual road lengths and speed zones.
+    let remainingSeconds = SIM_MIN_PER_TICK * 60 * speedMult;
     let edgeIndex = car.routeIndex;
     let fraction = car.progress;
     while (edgeIndex < car.route.edges.length) {
-      const length = edges[car.route.edges[edgeIndex]].length;
-      const available = (1-fraction)*length;
-      if (remainingStep < available) { fraction += remainingStep/length; break; }
-      remainingStep -= available; edgeIndex++; fraction=0;
+      const edge = edges[car.route.edges[edgeIndex]];
+      const meters = edge.length * METERS_PER_CELL;
+      const metersPerSecond = edge.speedKph / 3.6 * slowFactor;
+      const availableSeconds = (1-fraction)*meters/metersPerSecond;
+      if (remainingSeconds < availableSeconds) { fraction += remainingSeconds*metersPerSecond/meters; break; }
+      remainingSeconds -= availableSeconds; edgeIndex++; fraction=0;
     }
     car.progress = edgeIndex-car.routeIndex+fraction;
     while (car.progress >= 1 && car.routeIndex < car.route.edges.length) {
@@ -1341,7 +1344,7 @@ function stepCars(speedMult, filterCar = null) {
           car.progress = Math.min(car.progress, 0.95);
           car._stateBeforeTraffic = car.state;
           car.state = "stopsign_wait";
-          car._signTimer = 10;
+          car._signTimer = 1;
           car._waitingAtNode = nextNode;
           dbg("TRAFFIC", car.id + " stop sign · halt at node " + nextNode);
           break;
@@ -1780,7 +1783,7 @@ function checkObstacle(car) {
     car._obstacle = o;
     const narrate = (car === ix.drivingCar) && hasApiKey();
     if (o.kind === "jaywalker") {
-      car._obstacleTimer = 25;
+      car._obstacleTimer = 2;
       car._banEdge = null;
       o.crossT = 0;
       dbg("OBSTACLE", car.id + " sensor cone detected jaywalker stepping into the road · braking");
@@ -1788,14 +1791,14 @@ function checkObstacle(car) {
         "Sensor cone detected a jaywalker stepping into the road. " +
         "Braking to let them clear (same route resumes after).");
     } else if (o.kind === "parked truck") {
-      car._obstacleTimer = 12;
+      car._obstacleTimer = 3;
       car._banEdge = o.edgeKey;
       dbg("OBSTACLE", car.id + " sensor cone detected parked truck on edge " + o.edgeKey + " · computing detour");
       if (narrate) dbg("NARRATION",
         "Sensor cone detected a parked truck blocking the lane. " +
         "Stationary obstacle — computing a detour around it.");
     } else {
-      car._obstacleTimer = 10;
+      car._obstacleTimer = 2;
       car._banEdge = null;
       dbg("OBSTACLE", car.id + " sensor cone detected manual-driven car ahead · braking to follow safely");
       if (narrate) dbg("NARRATION",
@@ -1849,10 +1852,10 @@ function resolveObstacle(car) {
   }
 
   if (kind === "manual-driven car") {
-    car._slowedTicks = 30;
+    car._slowedTicks = 10;
     car.state = prevState;
     if (o) o.active = false;
-    dbg("REPLAN", car.id + " safe following distance established · resuming at 40% speed for ~30 ticks");
+    dbg("REPLAN", car.id + " safe following distance established · resuming at 40% speed for ~30 sim-seconds");
     if (narrate) dbg("NARRATION", "Safe following distance established — resuming at reduced speed.");
     return;
   }
@@ -3473,25 +3476,31 @@ function advanceSimulationTime(minutes) {
   }
 }
 
-function tick() {
-  const __t0 = performance.now();
+function simulationStep() {
   if (mode === "auto" && !paused) {
-    advanceSimulationTime(SIM_MIN_PER_TICK * speedMult);
+    advanceSimulationTime(SIM_MIN_PER_TICK);
     checkSchedules();
     tickEvents();
     shareQueuedRides();
     dispatch();
     returnIdleCars();
     tickStoplights();
-    stepCars(speedMult);
+    stepCars(1);
     tickAutoObstacles();
     updateObstacles();
   } else if (mode === "interactive" && ix.drivingCar && ix.drivingCar.state!=="idle") {
-    advanceSimulationTime(SIM_MIN_PER_TICK * speedMult);
+    advanceSimulationTime(SIM_MIN_PER_TICK);
     tickStoplights();
-    stepCars(speedMult, ix.drivingCar);
+    stepCars(1, ix.drivingCar);
     updateObstacles();
   }
+  retireFinishedBuses();
+}
+function tick() {
+  const __t0 = performance.now();
+  // Clock, movement, boarding and stop timers all advance together. Increasing
+  // playback changes wall-clock duration, never the simulated trip duration.
+  for(let i=0;i<speedMult;i++) simulationStep();
   for(let i=passengerTransfers.length-1;i>=0;i--) if(Date.now()>passengerTransfers[i].start+passengerTransfers[i].duration) passengerTransfers.splice(i,1);
   retireFinishedBuses();
   updateBusDisplay();
