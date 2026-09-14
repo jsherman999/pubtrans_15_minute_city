@@ -29,7 +29,7 @@ Rail is a visual layer, separate from the drivable graph. Passenger-count marker
 
 `drawRanchFPV` replaces residential block extrusions with low walls, doors, windows, a stoop and gable/hip roof polygons. Styles are derived deterministically from the building name; house fronts face their road access node. Commercial rendering is unchanged.
 
-`animateTransfer` is called at actual boarding and dropoff transitions, once per request. It snapshots the building center and vehicle stop position. Each effect interpolates for 650 ms of wall-clock time, with a 65 ms stagger for group alighting, and renders as a stick figure in the maps and POV. Completed effects are pruned every tick, including while paused. Reset clears all effects. The animations never modify simulation state or count as traffic obstacles.
+`animateTransfer` is called at actual boarding and dropoff transitions, once per request. It snapshots the building center and vehicle stop position. Alighting effects interpolate for 650 ms of wall-clock time, with a 65 ms stagger for groups. Boarding effects use a playback-scaled duration and are explicitly ended when the nine-simulated-second departure pause expires, and renders as a stick figure in the maps and POV. Completed effects are pruned every tick, including while paused. Reset clears all effects. The animations never modify simulation state or count as traffic obstacles.
 
 ## Dedicated neighborhood buses
 

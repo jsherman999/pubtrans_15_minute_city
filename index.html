@@ -966,10 +966,15 @@ function animateTransfer(car,request,boarding,index=0) {
   const building=boarding ? request.from : request.to;
   if(!building) return;
   const home=buildingCenter(building),road=nodeXY(car.nodeId);
+  // Allow nine simulated seconds for the last person to reach the door.
+  // Scale the animation to playback, and end it when the vehicle is released.
+  const duration=boarding ? 9/(SIM_MIN_PER_TICK*60)*BASE_TICK_MS/speedMult : 650;
+  if(boarding)car._boardingDepartureSeconds=9;
   passengerTransfers.push({from:boarding?home:road,to:boarding?road:home,
-    start:Date.now()+index*65,duration:650,boarding});
+    start:Date.now()+(boarding?0:index*65),duration,boarding,car});
 }
 function transferPosition(effect,now=Date.now()) {
+  if(effect.finished)return null;
   const t=(now-effect.start)/effect.duration;
   if(t<0 || t>1) return null;
   return [effect.from[0]+(effect.to[0]-effect.from[0])*t,
@@ -1275,6 +1280,12 @@ function stepCars(speedMult, filterCar = null) {
   for (const car of cars) {
     if (filterCar && car !== filterCar) continue;
     if (car.state === "idle") continue;
+    if(car._boardingDepartureSeconds>0) {
+      car._boardingDepartureSeconds=Math.max(0,car._boardingDepartureSeconds-SIM_MIN_PER_TICK*60*speedMult);
+      if(car._boardingDepartureSeconds===0) {
+        for(const effect of passengerTransfers)if(effect.boarding && effect.car===car)effect.finished=true;
+      } else if(car.state!=="boarding_wait" || !car._boarding?.length) continue;
+    }
     if (car.state === "obstacle_wait") {
       car._obstacleTimer -= 1;
       if (car._obstacleTimer <= 0) resolveObstacle(car);
@@ -3501,7 +3512,7 @@ function tick() {
   // Clock, movement, boarding and stop timers all advance together. Increasing
   // playback changes wall-clock duration, never the simulated trip duration.
   for(let i=0;i<speedMult;i++) simulationStep();
-  for(let i=passengerTransfers.length-1;i>=0;i--) if(Date.now()>passengerTransfers[i].start+passengerTransfers[i].duration) passengerTransfers.splice(i,1);
+  for(let i=passengerTransfers.length-1;i>=0;i--) if(passengerTransfers[i].finished || Date.now()>passengerTransfers[i].start+passengerTransfers[i].duration) passengerTransfers.splice(i,1);
   retireFinishedBuses();
   updateBusDisplay();
   waitingByBldg = computeWaiting();
@@ -3555,6 +3566,7 @@ document.getElementById("reset").addEventListener("click", () => {
     c._segments = null;
     c._activeSeg = null;
     c._boarding = null;
+    c._boardingDepartureSeconds=0;
     c._toDropoffRoute = null;
     c._slowedTicks = 0;
     c._obstacleKind = null;

@@ -28,7 +28,7 @@ Optional Anthropic narration still uses the source app's direct browser API call
 
 The center is **6 × 6 blocks (36 blocks)**, each 100 m long. Movement is calculated from actual road length and explicit cruising speeds: **20 km/h (12 mph)** on neighborhood roads, **25 km/h (16 mph)** downtown, and **35 km/h (22 mph)** on connecting roads. One mile at those speeds takes about 4.8, 3.9, or 2.8 minutes of uninterrupted driving, respectively.
 
-Each simulation step represents **3 seconds**. Boarding takes one step per passenger, plus a step to finish boarding; stop signs hold for 3 seconds, traffic signals have 30-second green/red phases with 3-second transitions, and obstacle responses take 6–9 seconds. Passenger ride time still includes the time spent aboard during other pickups, stops and detours. These are illustrative operating assumptions, not measured local transit performance.
+Each simulation step represents **3 seconds**. Boarding takes one step per passenger, plus a nine-second departure pause after the last passenger; stop signs hold for 3 seconds, traffic signals have 30-second green/red phases with 3-second transitions, and obstacle responses take 6–9 seconds. Passenger ride time still includes the time spent aboard during other pickups, stops and detours. These are illustrative operating assumptions, not measured local transit performance.
 
 The playback slider repeats complete simulation steps: **1× and 20× produce the same simulated ride durations**, but at different viewing speeds. At 1×, each nominal 100 ms display tick advances three simulated seconds (30 simulated seconds per real second); slow devices may take longer to process a tick.
 
@@ -58,7 +58,7 @@ Each neighborhood has four cul-de-sacs, now with two homes served at each turnin
 
 In Driver POV, residential units are low ranch houses with varied exterior colors, proportions, gabled/hipped roofs, doors, windows and stoops. Commercial buildings retain their original taller block appearance.
 
-Each actual passenger transfer creates a small moving stick figure between the building and the vehicle stop: yellow for boarding and green for alighting. Group dropoffs stagger the figures for readability. Effects also appear in Driver POV when within its field of view, and Reset day clears them. The animations are visual only and do not alter passenger accounting or boarding timing.
+Each actual passenger transfer creates a small moving stick figure between the building and the vehicle stop: yellow for boarding and green for alighting. Group dropoffs stagger the figures for readability. Boarding figures are synchronized with a nine-simulated-second departure pause, scaled to playback speed, and end before the vehicle leaves. Effects also appear in Driver POV when within its field of view, and Reset day clears them. The animations are visual only and do not alter passenger accounting or boarding timing.
 
 ## Large neighborhood buses
 

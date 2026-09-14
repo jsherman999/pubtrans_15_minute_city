@@ -208,7 +208,8 @@ console.log('PASS: 500-person shared simulation, road continuity, capacity, excl
    if(completedTrips.length!==5)throw Error('transfer trip not completed');
    if(passengerTransfers.filter(e=>e.boarding).length!==5 || passengerTransfers.filter(e=>!e.boarding).length!==5)throw Error('expected exactly one animation per passenger in each direction');
    for(const effect of passengerTransfers) {
-     if(!transferPosition(effect,effect.start+325) || transferPosition(effect,effect.start-1) || transferPosition(effect,effect.start+651))throw Error('transfer lifetime incorrect');
+     effect.finished=false;
+     if(!transferPosition(effect,effect.start+effect.duration/2) || transferPosition(effect,effect.start-1) || transferPosition(effect,effect.start+effect.duration+1))throw Error('transfer lifetime incorrect');
    }
    passengerTransfers.length=0;
    for(const b of buildingsByType.residential) drawRanchFPV(b,{x:b.x||0,y:(b.y||0)-40,cos:1,sin:0});
@@ -240,7 +241,7 @@ console.log('PASS: startup defaults and residential apartment/school event confi
    arriveAtRouteEnd(vehicle);
    simElapsed=120;stepCars(1,vehicle);
    simElapsed=122;stepCars(1,vehicle);
-   stepCars(1,vehicle); // finish boarding and start dropoff segment
+   for(let i=0;i<3;i++)stepCars(1,vehicle); // finish visual departure pause and start dropoff segment
    simElapsed=140;vehicle.nodeId=to.accessId;arriveAtRouteEnd(vehicle);
    if(completedCount!==2 || completedRideMinutes!==38)throw Error('per-person boarding clocks incorrect');
    if(completedTrips[0].tripMin!==20 || completedTrips[1].tripMin!==18)throw Error('queue time included in ride duration');
@@ -317,3 +318,21 @@ console.log('PASS: running queue average includes assigned/unassigned riders, fr
  `);
  console.log('PASS: identical simulation at 1×/20× and distance-calibrated 20/25/35 km/h road speeds.');
 }
+{
+ const {run}=boot();
+ run(`
+   const bus=makeCar('bus','boarding-visual-test',0);cars.push(bus);
+   const from=buildingByName('Central Stn'),to=buildingByName('Hillside');
+   const request={id:999999,requestedAt:simElapsed,from,to,pickupId:from.accessId,dropoffId:to.accessId};
+   assignMultiStop(bus,[request],'VISUAL TEST');arriveAtRouteEnd(bus);stepCars(1,bus);
+   const effect=passengerTransfers.find(e=>e.car===bus&&e.boarding);
+   for(let i=0;i<2;i++) {
+     stepCars(1,bus);
+     if(bus.state!=='boarding_wait'||effect.finished)throw Error('departed before boarding visual finished');
+   }
+   stepCars(1,bus);
+   if(bus.state!=='enroute_dropoff'||!effect.finished)throw Error('boarding effect must finish before departure');
+   if(transferPosition(effect,effect.start+1)!==null)throw Error('departed bus left a boarding figure behind');
+ `);
+}
+console.log('PASS: vehicle waits for the last boarding figure and removes it before departure.');
