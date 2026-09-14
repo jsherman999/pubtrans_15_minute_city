@@ -20,9 +20,15 @@ Scroll through the regional overview, city center, and five neighborhood maps. S
 
 **Interactive:** select the mode in Controls, tap a source building and destination on any maps, then return to Controls / POV and press Plan and Drive. Candidate routes, congestion scoring, obstacles, replanning and driver POV work across the region. A cul-de-sac has only one exit, so some origin/destination pairs have fewer than three distinct routes.
 
-The fleet starts with 28 sedans (4 seats), 14 shuttles (8 seats), and five large purple buses (20 seats each), serving 100 simulated people by default. Individual houses are potential origins/destinations, not one person per house. Worker, student, errand and commuter profiles retain their original schedules; suburban residents also generate neighborhood visits. School/train surges, pooling, boarding one passenger per tick, stoplights, stop signs, one-way streets, automatic depot returns, metrics, and inline/pop-out debug logs are retained.
+The fleet starts with 15 sedans (4 seats), 14 shuttles (8 seats), and five large purple buses (20 seats each), serving 300 simulated people by default (adjustable up to 500). Individual houses are potential origins/destinations, not one person per house. Worker, student, errand and commuter profiles retain their original schedules; suburban residents also generate neighborhood visits. School/train surges, pooling, boarding one passenger per tick, stoplights, stop signs, one-way streets, automatic depot returns, metrics, and inline/pop-out debug logs are retained.
 
 Optional Anthropic narration still uses the source app's direct browser API call. Paste a key in Settings; it is held in memory and cleared by refresh. Core simulation needs no API key. The optional paid API call is not covered by the automated tests.
+
+## City apartments and defaults
+
+Riverbend school has been replaced by **Riverbend Apts**, a 100-apartment residential building. Home assignment and residential event destinations are weighted by housing units, so the building contributes 100 potential homes. Its residents count toward the selected population, rather than adding 100 people on top. Hillside is the remaining school; Riverbend school events have been removed. The apartment building has a distinct map color and a taller, windowed POV appearance.
+
+New page loads start with **300 people, 15 sedans, 14 shuttles, five large buses and 100% ride sharing**. Reset day retains the current live fleet/demand settings. Fleet & demand uses fixed columns so buttons and counts remain aligned when digits change.
 
 ## Houses and passenger transfers
 
@@ -40,7 +46,7 @@ Fleet & demand has a separate bus count, active count and +/− controls, plus a
 
 ## Ride sharing control
 
-In Fleet & demand, **Ride sharing** starts at **0% (baseline)**, retaining fixed trips and the original pooling. Raise it to allow buses and shuttles already out on the road to collect additional **unassigned** requests along their remaining service or return to Central Station. Try 50% first; increase if you prefer more pooling over direct trips.
+In Fleet & demand, **Ride sharing** starts at **100%**. Set it to **0% (baseline)** to retain fixed trips and the original pooling. Higher settings allow buses and shuttles already out on the road to collect additional **unassigned** requests along their remaining service or return to Central Station. Try 50% first; increase if you prefer more pooling over direct trips.
 
 - 10% permits up to 40 m of additional driving per trip; 50% permits 200 m; 100% permits 400 m. Boarding stops add time beyond this distance budget.
 - Existing pickup/dropoff order is preserved. Capacity accounts for passengers aboard and promised pickups at every future stop. A newly added request always has a pickup before its dropoff.

@@ -135,6 +135,7 @@ console.log('PASS: five assigned buses, 20-rider pooling, inbound/outbound servi
    const before={...sharingBus.pos};
    const back={id:nextReqId++,human:{id:-1},from:home,to:hub,pickupId:home.accessId,dropoffId:hub.accessId,requestedAt:simMinute};
    queue.push(back);
+   rideSharing=0;
    if(tryShareRide(sharingBus)) throw Error('baseline sharing must be off');
    rideSharing=100;
    if(!tryShareRide(sharingBus)) throw Error('return rider should be admitted while delivering outbound rider');
@@ -212,3 +213,18 @@ console.log('PASS: 500-person shared simulation, road continuity, capacity, excl
  `);
 }
 console.log('PASS: fifth connected neighborhood within one block, two homes at every cul-de-sac, ranch rendering and exact per-person transfer effects.');
+{
+ const {run,elements}=boot();
+ assert.equal(run('humans.length'),300);
+ assert.equal(run('countCars("sedan")'),15);
+ assert.equal(run('countCars("shuttle")'),14);
+ assert.equal(run('countCars("bus")'),5);
+ assert.equal(run('rideSharing'),100);
+ assert.equal(run('buildingsByType.school.length'),1);
+ assert.equal(run('buildingByName("Riverbend Apts").apartments'),100);
+ assert.equal(run('buildingsByType.residential.includes(buildingByName("Riverbend Apts"))'),true);
+ assert.equal(run('eventSchedule.every(e=>[e.pickup,e.dropoff].every(n=>n==="residential" || buildingByName(n)))'),true);
+ assert.equal(elements.get('ctl-pop').textContent,300);
+ assert.equal(elements.get('ctl-sed').textContent,15);
+}
+console.log('PASS: startup defaults and residential apartment/school event configuration.');

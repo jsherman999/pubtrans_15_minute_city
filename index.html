@@ -142,6 +142,14 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
  .page-title h1 {font-size:23px;} .map-nav {padding:8px;gap:5px;} .graph-panel header h1 {display:block;}
  .side-dock .debug-panel {height:260px;} .map-card p {font-size:11px;}
 }
+/* Fixed tracks keep minus, total, active and plus aligned for every row. */
+.stepper {display:grid;grid-template-columns:minmax(0,1fr) 160px;gap:8px;}
+.stepper-btns {display:grid;grid-template-columns:36px 36px 34px 36px;gap:6px;width:160px;}
+.stepper-btns span {min-width:0;width:100%;font-variant-numeric:tabular-nums;}
+.stepper-btns .active-count {display:flex;align-items:center;justify-content:center;gap:3px;}
+.stepper-btns .active-count::before {margin:0;}
+.stepper-btns button:last-child {grid-column:4;}
+#ride-sharing-value {width:42px;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;}
 </style>
 </head>
 <body>
@@ -157,6 +165,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#ffc000"></span>School</div>
       <div class="leg"><span class="sw" style="background:#c00000"></span>Train station</div>
       <div class="leg"><span class="sw" style="background:#9a9a9a"></span>Residential</div>
+      <div class="leg"><span class="sw" style="background:#c29aca"></span>Apartments (100 units)</div>
       <div class="leg"><span class="sw" style="background:#14b8a6"></span>Sedan (cap 4)</div>
       <div class="leg"><span class="sw" style="background:#f97316"></span>Shuttle (cap 8)</div>
       <div class="leg"><span class="sw" style="background:#a78bfa"></span>Large bus (cap 20)</div>
@@ -220,7 +229,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <section class="hud">
       <h3>Live state</h3>
       <div class="row"><span>Time</span><span id="clock">06:30</span></div>
-      <div class="row"><span>Population</span><span id="population">100</span></div>
+      <div class="row"><span>Population</span><span id="population">300</span></div>
       <div class="row"><span>Active rides</span><span id="active-rides">0</span></div>
       <div class="row"><span>Queued</span><span id="queued-rides">0</span></div>
       <div class="row"><span>Completed</span><span id="completed-rides">0</span></div>
@@ -241,10 +250,10 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <section id="sim-controls">
       <h3>Fleet &amp; demand</h3>
       <div class="stepper"><span>Population</span>
-        <div class="stepper-btns"><button data-act="pop-dec">−</button><span id="ctl-pop">100</span><button data-act="pop-inc">+</button></div>
+        <div class="stepper-btns"><button data-act="pop-dec">−</button><span id="ctl-pop">300</span><span aria-hidden="true"></span><button data-act="pop-inc">+</button></div>
       </div>
       <div class="stepper"><span>Sedans (cap 4)</span>
-        <div class="stepper-btns"><button data-act="sed-dec">−</button><span id="ctl-sed">28</span><span class="active-count" id="ctl-sed-active" title="currently active (out of the depot)">0</span><button data-act="sed-inc">+</button></div>
+        <div class="stepper-btns"><button data-act="sed-dec">−</button><span id="ctl-sed">15</span><span class="active-count" id="ctl-sed-active" title="currently active (out of the depot)">0</span><button data-act="sed-inc">+</button></div>
       </div>
       <div class="stepper"><span>Shuttles (cap 8)</span>
         <div class="stepper-btns"><button data-act="shu-dec">−</button><span id="ctl-shu">14</span><span class="active-count" id="ctl-shu-active" title="currently active (out of the depot)">0</span><button data-act="shu-inc">+</button></div>
@@ -253,9 +262,9 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <div class="stepper-btns"><button data-act="bus-dec" aria-label="Remove large bus">−</button><span id="ctl-bus">5</span><span class="active-count" id="ctl-bus-active" title="currently active (out of the depot)">0</span><button data-act="bus-inc" aria-label="Add large bus">+</button></div>
       </div>
       <p class="hint small" id="bus-assignments"></p>
-      <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="0"><span id="ride-sharing-value">0%</span></div>
+      <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="100"><span id="ride-sharing-value">100%</span></div>
       <div class="row"><span>On-the-way pickups assigned</span><span id="shared-pickups">0</span></div>
-      <p class="hint small" id="ride-sharing-hint">Baseline: trips are fixed when dispatched.</p>
+      <p class="hint small" id="ride-sharing-hint">On-the-way pickups · up to 400m extra driving per trip. Boarding stops also add time.</p>
       <p class="hint small">Higher settings let buses and shuttles add unassigned waiting riders along their route or return to the center. Existing stops stay in order; seats already promised to waiting riders are reserved.</p>
       <p class="hint small">Purple buses serve their assigned neighborhood ↔ city center all day, including schools and events. Added buses go to the least-served neighborhood. Removed buses finish assigned trips first.</p>
       <p class="hint small">Adjusts the running sim live. Removing vehicles frees idle ones first; waiting riders are re-queued.</p>
@@ -289,8 +298,8 @@ const BLOCKS = GRID_N - 1;        // 6x6 blocks
 const CANVAS = 780;
 const PADDING = 36;
 const CELL = (CANVAS - PADDING * 2) / BLOCKS;
-const POPULATION = 100;
-const N_SEDANS = 28;
+const POPULATION = 300;
+const N_SEDANS = 15;
 const N_SHUTTLES = 14;
 const K_PATHS = 3;
 const SIM_MIN_PER_TICK = 0.3;     // paired with baseStep 0.15 → ~6.7 ticks/block = 2 sim-min/block; brisk pace, realistic ~20-min rides
@@ -329,7 +338,7 @@ const BUILDINGS = [
   { col:0,row:5,type:"employer",name:"SouthLabs" },
   { col:5,row:5,type:"employer",name:"WestWorks" },
   { col:1,row:1,type:"school",name:"Hillside" },
-  { col:4,row:4,type:"school",name:"Riverbend" },
+  { col:4,row:4,type:"residential",name:"Riverbend Apts",apartments:100 },
   { col:1,row:3,type:"grocery",name:"GreenMart" },
   { col:4,row:2,type:"grocery",name:"CityFoods" },
   { col:3,row:0,type:"station",name:"Central Stn" },
@@ -340,7 +349,7 @@ const BUILDINGS = [
 ];
 const buildingsByType = { employer: [], grocery: [], school: [], station: [], residential: [] };
 for (const b of BUILDINGS) {
-  b.color = COLORS[b.type];
+  b.color = b.apartments ? "#c29aca" : COLORS[b.type];
   b.accessId = nodeId(b.col, b.row);
   buildingsByType[b.type].push(b);
 }
@@ -729,13 +738,22 @@ function clearDebugLogs() {
 const humans = [];
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Apartment units contribute homes to the population distribution, rather
+// than treating a 100-unit building as a single detached residence.
+function pickResidential() {
+  const homes=buildingsByType.residential;
+  let choice=Math.random()*homes.reduce((sum,b)=>sum+(b.apartments || 1),0);
+  for(const b of homes) {choice-=b.apartments || 1;if(choice<0)return b;}
+  return homes[homes.length-1];
+}
+
 function makeHuman(id) {
   const res = buildingsByType.residential;
   const emp = buildingsByType.employer;
   const sch = buildingsByType.school;
   const grc = buildingsByType.grocery;
   const stn = buildingsByType.station;
-  const home = pick(res);
+  const home = pickResidential();
   const roll = Math.random();
   let profile;
   if (roll < 0.60) profile = "worker";
@@ -902,7 +920,7 @@ function nearestOrder(start, ids) {
 // Opportunistic insertion keeps every existing stop, pickup-before-dropoff,
 // and capacity commitment. Replanning starts at the next road node, never
 // moving a vehicle backward along its current edge.
-let rideSharing = 0;
+let rideSharing = 100;
 let sharingCursor = 0;
 let sharedPickups = 0;
 const passengerTransfers=[];
@@ -1816,8 +1834,6 @@ const EVENT_BANNER_TICKS = 70;
 const eventSchedule = [
   { minute: 7 * 60 + 45, label: "Hillside school day starts — 10 inbound students",
     pickup: "residential", dropoff: "Hillside", count: 10 },
-  { minute: 7 * 60 + 55, label: "Riverbend school day starts — 10 inbound students",
-    pickup: "residential", dropoff: "Riverbend", count: 10 },
   { minute: 9 * 60 + 0, label: "Train arrives at Central Stn — 12 passengers disembark",
     pickup: "Central Stn", dropoff: "residential", count: 12 },
   { minute: 11 * 60 + 30, label: "Train arrives at Central Stn — 10 passengers disembark",
@@ -1826,8 +1842,6 @@ const eventSchedule = [
     pickup: "Central Stn", dropoff: "residential", count: 10 },
   { minute: 15 * 60 + 5, label: "Hillside school day ends — 10 outbound students",
     pickup: "Hillside", dropoff: "residential", count: 10 },
-  { minute: 15 * 60 + 10, label: "Riverbend school day ends — 10 outbound students",
-    pickup: "Riverbend", dropoff: "residential", count: 10 },
   { minute: 17 * 60 + 0, label: "Outbound train at Central Stn — 12 passengers gathering",
     pickup: "residential", dropoff: "Central Stn", count: 12 },
 ];
@@ -1856,8 +1870,8 @@ function fireEvent(evt) {
   const dropoffB = resolveEventEndpoint(evt.dropoff);
   let injected = 0;
   for (let i = 0; i < evt.count; i++) {
-    const from = pickupB || res[Math.floor(Math.random() * res.length)];
-    const to = dropoffB || res[Math.floor(Math.random() * res.length)];
+    const from = pickupB || pickResidential();
+    const to = dropoffB || pickResidential();
     if (from === to) continue;
     const req = {
       id: nextReqId++,
@@ -2301,7 +2315,10 @@ function drawBuildings() {
     ctx.font = "bold 9px -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    if(viewScale>.45) ctx.fillText(b.development != null ? b.name.split(" ").pop() : b.name, bx + BSIZE / 2, by + BSIZE / 2);
+    if(viewScale>.45) {
+      ctx.fillText(b.development != null ? b.name.split(" ").pop() : b.name, bx + BSIZE / 2, by + BSIZE / 2 - (b.apartments ? 6 : 0));
+      if(b.apartments)ctx.fillText(b.apartments+" apartments",bx+BSIZE/2,by+BSIZE/2+8);
+    }
   }
 }
 
@@ -2727,7 +2744,7 @@ function drawWaitingFPV(cam) {
     const v = toCamSpace(wx, wy, 0, cam);             // ground at building center
     if (v.fwd < FPV_NEAR || v.fwd > FPV_FAR * 1.4) continue;
     if (Math.abs(v.right) / v.fwd > 1.7) continue;
-    const ve = toCamSpace(wx, wy, (b.type==="residential" ? 18 : FPV_BLDG_HEIGHT * 0.55), cam); // anchor on the building face
+    const ve = toCamSpace(wx, wy, (b.type==="residential" && !b.apartments ? 18 : FPV_BLDG_HEIGHT * 0.55), cam); // anchor on the building face
     markers.push({ depth: v.fwd, anchor: projectCam(ve), count });
   }
   markers.sort((p, q) => q.depth - p.depth);          // far to near
@@ -2968,7 +2985,7 @@ function drawBuildingsFPV(cam) {
   items.sort((a, b) => b.dist - a.dist);
   for (const item of items) {
     const { b, bx, by, bSize, cx, cy } = item;
-    if(b.type==="residential") {drawRanchFPV(b,cam);continue;}
+    if(b.type==="residential" && !b.apartments) {drawRanchFPV(b,cam);continue;}
     const groundCorners = [
       [bx, by], [bx + bSize, by], [bx + bSize, by + bSize], [bx, by + bSize],
     ];
@@ -2992,6 +3009,14 @@ function drawBuildingsFPV(cam) {
       strokePolyWorld(
         [[g1[0], g1[1], 0], [g2[0], g2[1], 0], [g2[0], g2[1], FPV_BLDG_HEIGHT], [g1[0], g1[1], FPV_BLDG_HEIGHT]],
         cam);
+      if(b.apartments) {
+        fpvCtx.fillStyle="#9ec7db";
+        for(let floor=0;floor<5;floor++)for(let window=0;window<5;window++) {
+          const left=.06+window*.18,right=left+.11,z=6+floor*11;
+          const P=(t,h)=>[g1[0]+(g2[0]-g1[0])*t,g1[1]+(g2[1]-g1[1])*t,h];
+          fillPolyWorld([P(left,z),P(right,z),P(right,z+6),P(left,z+6)],cam);
+        }
+      }
     }
   }
 }
