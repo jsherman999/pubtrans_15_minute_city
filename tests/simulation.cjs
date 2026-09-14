@@ -413,3 +413,74 @@ console.log('PASS: immediate occupied-vehicle recovery, all destinations deliver
  `);
 }
 console.log('PASS: recovery safely waits for a closed destination and retries without duplicate transfers.');
+// Private traffic persists to destination and owns real route reservations.
+{
+ const {run,elements}=boot(834);
+ run(`
+   dbg=()=>{};cars.length=0;for(const edge of Object.values(edges))edge.claims.clear();
+   const human=spawnHumanCar();
+   if(!human||human.kind!=='human'||!human.route.edges.length)throw Error('human did not start driving');
+   const reserved=human.route.edges.length/N_EDGES;
+   if(Math.abs(gridlockBreakdown().values.human-reserved)>1e-10)throw Error('private traffic missing from gridlock');
+   const originalRoute=human.route;
+   for(let i=0;i<3000&&human.state!=='human_done';i++){tickStoplights();stepCars(1);}
+   if(human.state!=='human_done'||human.nodeId!==human.destination.accessId)throw Error('private trip never reached destination');
+   if(completedCount!==0)throw Error('private trip polluted transit completions');
+   if(Object.values(edges).some(e=>e.claims.has(human.id)))throw Error('private claims leaked');
+   tickEmergencyVehicles();if(cars.includes(human))throw Error('arrived private car not removed');
+   // Baseline equals the old average mixed-obstacle human spawn rate.
+   if(Math.abs(HUMAN_BASE_INTERVAL-11.925)>1e-10)throw Error('wrong baseline');
+   let arrivals=0;spawnHumanCar=()=>{arrivals++;return {};};
+   humanTrafficRate=1;humanSpawnCredit=0;for(let i=0;i<2400;i++)tickHumanTraffic();
+   const baseline=arrivals;
+   humanTrafficRate=10;humanSpawnCredit=0;arrivals=0;for(let i=0;i<2400;i++)tickHumanTraffic();
+   if(baseline!==10||arrivals!==100)throw Error('slider rate does not scale arrivals');
+ `);
+ elements.get('reset').click();assert.equal(run('cars.some(c=>c.kind==="human")||humanSpawnCredit!==0'),false);
+}
+console.log('PASS: persistent human trips, route pressure, arrival cleanup, transit metric isolation, baseline and 10× arrival rate.');
+// A waiting leader slows followers on its own lane only, including across nodes.
+{
+ const {run}=boot(146);
+ run(`
+   dbg=()=>{};cars.length=0;
+   const edge=Object.values(edges).find(e=>!e.oneWay&&e.length>.5),key=edgeKey(edge.a,edge.b);
+   const leader=makeCar('human','human-leader'),follower=makeCar('sedan','sed-follower'),opposite=makeCar('sedan','sed-opposite');
+   for(const c of [leader,follower,opposite]) {
+     c.state='human_driving';c.nodeId=c===opposite?edge.b:edge.a;
+     setRoute(c,{nodes:c===opposite?[edge.b,edge.a]:[edge.a,edge.b],edges:[key],cost:edge.length});cars.push(c);
+   }
+   leader.progress=.5;leader.state='redlight_wait';leader._waitingAtNode=-1;leader._fromEdge=key;
+   follower.progress=.3;opposite.progress=.3;
+   const available=(.5-.3)*edge.length*METERS_PER_CELL-8;
+   if(Math.abs(followingRoom(follower,trafficSnapshot(),100)-Math.max(0,available))>1e-8)throw Error('wrong following gap');
+   if(followingRoom(opposite,trafficSnapshot(),100)!==Infinity)throw Error('opposite lane falsely blocked');
+   stepCars(1,follower);
+   if((leader.progress-follower.progress)*edge.length*METERS_PER_CELL<8-1e-7)throw Error('follower drove through human car');
+   const next=(adj[edge.b]||[]).find(n=>n.to!==edge.a);
+   if(next) {
+     setRoute(follower,{nodes:[edge.a,edge.b,next.to],edges:[key,next.key],cost:1});follower.progress=.95;
+     setRoute(leader,{nodes:[edge.b,next.to],edges:[next.key],cost:1});leader.progress=0;
+     const room=followingRoom(follower,trafficSnapshot(),100);
+     if(room>Math.max(0,.05*edge.length*METERS_PER_CELL-8)+1e-7)throw Error('failed to look across intersection');
+   }
+ `);
+}
+console.log('PASS: eight-meter following gap, human/fleet interaction, opposite-lane independence and intersection lookahead.');
+{
+ const {run}=boot(687);
+ run(`
+   dbg=()=>{};cars.length=0;for(const e of Object.values(edges))e.claims.clear();
+   const key=Object.keys(edges)[0],edge=edges[key];
+   for(const [kind,id] of [['sedan','public'],['human','private'],['police','officer']]) {
+     cars.push(makeCar(kind,id));edge.claims.add(id);
+   }
+   directionalBlocks.set('test',{from:edge.a,to:edge.b,until:100,incidentId:1});
+   ix.obstacles.push({kind:'parked truck',edgeKey:key,active:true});
+   const pressure=gridlockBreakdown();
+   if(Object.values(pressure.values).some(v=>Math.abs(v-1/N_EDGES)>1e-10))throw Error('breakdown missing component or double counted obstruction');
+   if(Math.abs(pressure.total-4/N_EDGES)>1e-10)throw Error('chart does not sum to score');
+   updateHUD();
+ `);
+}
+console.log('PASS: gridlock breakdown separates public, private, response and deduplicated obstructions; contributions sum to total.');

@@ -111,3 +111,11 @@ The central Police / Fire station has garage bays and blue/red panels in Driver 
 - Roughly every 4–12 simulated hours an occupied public vehicle may develop trouble. It pulls aside at the next road node and a white recovery vehicle is dispatched immediately. Riders transfer, then continue to their individual destinations with their original pickup times preserved. The stalled vehicle returns to service after a five-minute repair following rescue.
 
 The debug stream logs dispatch, arrival, road reopening, police pickup, return, breakdown and passenger recovery. Reset day clears incidents, closures and recovery vehicles.
+
+## Human-driven traffic and gridlock breakdown
+
+Lime-green cars marked **H** make persistent trips between buildings. They follow road speeds, one-way streets, stop signs, lights, emergency closures and obstacles, then leave the map at their destination. They reserve their routes like fleet vehicles, so routing accounts for them. All moving vehicles follow traffic in the same direction with an eight-meter gap, including across road nodes; vehicles in the opposite direction are independent.
+
+The **Human-driven traffic** slider starts at **1×**, approximately the previous human-obstacle arrival rate: one car per 11.925 simulated minutes (about five/hour). Increase up to **30×** (about 151/hour). It changes future arrivals; cars already driving finish their routes. Spawn points are checked for space and blocked starts retry later. Public fleet sizes, demand and completed passenger metrics exclude these private trips.
+
+The live horizontal chart decomposes Gridlock into public-fleet route reservations, human-driven route reservations, emergency/recovery route reservations and obstructed road segments. Contributions are divided by the number of road segments and sum to the score; bars show percentage shares. Obstructions on the same segment are counted once. This is a route-pressure indicator, not measured traffic density or a percent of vehicles stopped. A separate live count shows vehicles slowing/waiting behind traffic. Human cars no longer trigger the old one-shot six-second stop and fixed slowdown.

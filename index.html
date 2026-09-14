@@ -153,6 +153,12 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 .stepper-btns .active-count {display:flex;align-items:center;justify-content:center;gap:3px;}
 .stepper-btns .active-count::before {margin:0;}
 .stepper-btns button:last-child {grid-column:4;}
+#human-traffic-value {width:36px;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;}
+#gridlock-breakdown {margin-top:10px;}
+.pressure-row {display:grid;grid-template-columns:1fr auto;gap:4px;font-size:11px;margin:8px 0;}
+.pressure-row > span:last-of-type {font-variant-numeric:tabular-nums;}
+.pressure-track {grid-column:1 / -1;height:6px;background:#292c33;border-radius:3px;overflow:hidden;}
+.pressure-track > div {height:100%;width:0%;transition:width .15s;}
 #ride-sharing-value {width:42px;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;}
 </style>
 </head>
@@ -177,6 +183,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#f43f5e"></span>Fire trucks / support</div>
       <div class="leg"><span class="sw" style="background:#e2e8f0"></span>Recovery vehicle</div>
       <div class="leg"><span class="sw" style="background:#b86c55"></span>Police / Fire station</div>
+      <div class="leg"><span class="sw" style="background:#a3e635"></span>Human-driven (H)</div>
       <div class="leg"><span class="sw" style="background:#ef4444"></span>Obstacle</div>
       <div class="leg"><span class="sw" style="background:#fef08a"></span>Person boarding</div>
       <div class="leg"><span class="sw" style="background:#86efac"></span>Person alighting</div>
@@ -247,7 +254,15 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="row"><span>Pooled riders</span><span id="pooled-rides">0</span></div>
       <div class="row"><span title="Mean boarding-to-dropoff time per completed passenger since Reset day; excludes queue time">Avg ride (min)</span><span id="avg-trip">—</span></div>
       <div class="row"><span title="Running mean request-to-boarding wait across boarded riders and everyone still awaiting pickup since Reset day">Avg queue (min)</span><span id="avg-queue">—</span></div>
-      <div class="row"><span>Gridlock</span><span id="gridlock">0.00</span></div>
+      <div class="row"><span title="Congestion pressure: vehicle route reservations plus obstructed road segments, divided by road segments">Gridlock</span><span id="gridlock">0.00</span></div>
+      <div id="gridlock-breakdown" aria-label="Gridlock contribution breakdown">
+        <div class="pressure-row"><span>Public fleet</span><span id="pressure-fleet-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-fleet-bar" style="background:#14b8a6"></div></div></div>
+        <div class="pressure-row"><span>Human-driven</span><span id="pressure-human-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-human-bar" style="background:#a3e635"></div></div></div>
+        <div class="pressure-row"><span>Emergency / recovery</span><span id="pressure-response-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-response-bar" style="background:#ef4444"></div></div></div>
+        <div class="pressure-row"><span>Road obstructions</span><span id="pressure-blocked-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-blocked-bar" style="background:#facc15"></div></div></div>
+      </div>
+      <p class="hint small">Bars show each factor’s share of the score. Score = route reservations + obstructed road segments, divided by all road segments. A pressure indicator, not a percentage of stopped traffic.</p>
+      <p class="hint small" id="traffic-following">0 vehicles waiting behind traffic.</p>
       <div class="row"><span>Sim load</span><span id="perf-cpu">—</span></div>
       <div class="row" id="perf-mem-row"><span>JS heap</span><span id="perf-mem">—</span></div>
       <p class="hint small" id="perf-note" style="margin-top:6px"></p>
@@ -274,6 +289,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <div class="stepper-btns"><button data-act="bus-dec" aria-label="Remove large bus">−</button><span id="ctl-bus">5</span><span class="active-count" id="ctl-bus-active" title="currently active (out of the depot)">0</span><button data-act="bus-inc" aria-label="Add large bus">+</button></div>
       </div>
       <p class="hint small" id="bus-assignments"></p>
+      <div class="row"><label for="human-traffic">Human-driven traffic</label><input type="range" id="human-traffic" min="1" max="30" step="1" value="1"><span id="human-traffic-value">1×</span></div>
+      <p class="hint small" id="human-traffic-hint">Baseline: about 5 arrivals/hour · 0 on road. Existing cars finish their routes when reduced.</p>
       <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="100"><span id="ride-sharing-value">100%</span></div>
       <div class="row"><span>On-the-way pickups assigned</span><span id="shared-pickups">0</span></div>
       <p class="hint small" id="ride-sharing-hint">On-the-way pickups · up to 400m extra driving per trip. Boarding stops also add time.</p>
@@ -331,7 +348,7 @@ const COLORS = {
   sedan: "#14b8a6",
   shuttle: "#f97316",
   bus: "#a78bfa",
-  police: "#38bdf8", fire: "#f43f5e", firecar: "#fb7185", recovery: "#e2e8f0", emergency: "#b86c55",
+  human: "#a3e635", police: "#38bdf8", fire: "#f43f5e", firecar: "#fb7185", recovery: "#e2e8f0", emergency: "#b86c55",
   routePalette: ["#60a5fa", "#a78bfa", "#f472b6", "#fb923c"],
   chosenRoute: "#22c55e",
   obstacle: "#ef4444",
@@ -1102,7 +1119,7 @@ function tickEmergencyVehicles() {
       planRecoveryDrops(car);
     }
   }
-  for(let i=cars.length-1;i>=0;i--)if(cars[i].state==="response_done" || (cars[i].kind==="recovery" && cars[i].state==="idle")) {
+  for(let i=cars.length-1;i>=0;i--)if(cars[i].state==="human_done" || cars[i].state==="response_done" || (cars[i].kind==="recovery" && cars[i].state==="idle")) {
     const car=cars[i];releaseAllClaims(car);
     if(car===spectateCar)stopSpectate();if(car===featuredCar)featuredCar=null;if(car===cockpitCar)cockpitCar=null;
     cars.splice(i,1);
@@ -1453,10 +1470,42 @@ function assignMultiStop(car, reqs, tag) {
 // ============================================================
 // Movement
 // ============================================================
+function trafficSnapshot() {
+  const lanes=new Map();
+  for(const [order,car] of cars.entries()) {
+    if(!car.route || car.routeIndex>=car.route.edges.length || ["vehicle_trouble","trouble_repair"].includes(car.state))continue;
+    const key=car.route.nodes[car.routeIndex]+":"+car.route.nodes[car.routeIndex+1];
+    if(!lanes.has(key))lanes.set(key,[]);
+    lanes.get(key).push({car,order,progress:car.progress});
+  }
+  return lanes;
+}
+function followingRoom(car,lanes,maxMeters) {
+  let distance=0;
+  const order=cars.indexOf(car);
+  for(let i=car.routeIndex;i<car.route.edges.length && distance<=maxMeters+8;i++) {
+    const edge=edges[car.route.edges[i]],length=edge.length*METERS_PER_CELL;
+    const start=i===car.routeIndex?car.progress:0;
+    const key=car.route.nodes[i]+":"+car.route.nodes[i+1];
+    let nearest=Infinity;
+    for(const other of lanes.get(key)||[]) {
+      if(other.car===car)continue;
+      const gap=other.progress-start;
+      if(gap< -1e-9 || (Math.abs(gap)<1e-9 && i===car.routeIndex && other.order>order))continue;
+      nearest=Math.min(nearest,distance+gap*length-8);
+    }
+    if(nearest!==Infinity)return Math.max(0,nearest);
+    distance+=(1-start)*length;
+  }
+  return Infinity;
+}
+
 function stepCars(speedMult, filterCar = null) {
+  const lanes=trafficSnapshot();
   for (const car of cars) {
     if (filterCar && car !== filterCar) continue;
-    if (["idle","emergency_scene","vehicle_trouble","trouble_repair","response_done","recovery_wait"].includes(car.state)) continue;
+    car._followingTraffic=false;
+    if (["idle","emergency_scene","vehicle_trouble","trouble_repair","response_done","recovery_wait","human_done"].includes(car.state)) continue;
     if((car.incident || car.rescueTarget) && !car.route)continue;
     if(car.route && car.routeIndex<car.route.edges.length) {
       const from=car.route.nodes[car.routeIndex],to=car.route.nodes[car.routeIndex+1];
@@ -1523,6 +1572,10 @@ function stepCars(speedMult, filterCar = null) {
     if (car._slowedTicks > 0) car._slowedTicks--;
     // Spend elapsed seconds along the actual road lengths and speed zones.
     let remainingSeconds = SIM_MIN_PER_TICK * 60 * speedMult;
+    let room=followingRoom(car,lanes,remainingSeconds*35/3.6);
+    car._followingTraffic=Number.isFinite(room) && room<remainingSeconds*edges[car.route.edges[car.routeIndex]].speedKph/3.6*slowFactor;
+    if(car._followingTraffic && !car._followingLogged)dbg("TRAFFIC",car.id+" slowing or waiting behind traffic");
+    car._followingLogged=car._followingTraffic;
     let edgeIndex = car.routeIndex;
     let fraction = car.progress;
     while (edgeIndex < car.route.edges.length) {
@@ -1530,7 +1583,11 @@ function stepCars(speedMult, filterCar = null) {
       if(directionBlocked(car.route.nodes[edgeIndex],car.route.nodes[edgeIndex+1],car.incident?.id))break;
       const meters = edge.length * METERS_PER_CELL;
       const metersPerSecond = edge.speedKph / 3.6 * slowFactor;
-      const availableSeconds = (1-fraction)*meters/metersPerSecond;
+      const segmentMeters=(1-fraction)*meters;
+      const travelMeters=Math.min(segmentMeters,remainingSeconds*metersPerSecond);
+      if(room<travelMeters) {fraction+=room/meters;remainingSeconds=0;break;}
+      room-=travelMeters;
+      const availableSeconds = segmentMeters/metersPerSecond;
       if (remainingSeconds < availableSeconds) { fraction += remainingSeconds*metersPerSecond/meters; break; }
       remainingSeconds -= availableSeconds; edgeIndex++; fraction=0;
     }
@@ -1605,6 +1662,10 @@ function advanceSegment(car) {
 }
 
 function arriveAtRouteEnd(car) {
+  if(car.kind==="human") {
+    releaseAllClaims(car);car.route=null;car.state="human_done";
+    dbg("TRAFFIC",car.id+" reached "+car.destination.name+" · left the road");return;
+  }
   if(car.incident) {arriveEmergency(car);return;}
   if(car.state==="recovery_outbound") {arriveRecovery(car);return;}
   // Reached the depot after repositioning — park (idle) at Central Stn.
@@ -2070,6 +2131,51 @@ function resolveObstacle(car) {
   car.state = prevState;
 }
 
+const HUMAN_BASE_INTERVAL=79.5*3*SIM_MIN_PER_TICK;
+let humanTrafficRate=1,humanSpawnCredit=0,humanCarSeq=0;
+function spawnHumanCar() {
+  const candidates=BUILDINGS.filter(b=>b.type!=="emergency");
+  for(let attempt=0;attempt<12;attempt++) {
+    const from=pick(candidates),to=pick(candidates);
+    if(from===to)continue;
+    const [x,y]=nodeXY(from.accessId);
+    if(cars.some(c=>c.state!=="idle"&&Math.hypot(c.pos.x-x,c.pos.y-y)<CELL*.08))continue;
+    const route=dijkstra(from.accessId,to.accessId);
+    if(!route||!route.edges.length)continue;
+    const car=makeCar("human","human-"+(++humanCarSeq));
+    car.nodeId=from.accessId;car.pos={x,y};car.destination=to;car.state="human_driving";
+    claimRoute(car,route);setRoute(car,route);cars.push(car);
+    dbg("TRAFFIC",car.id+" human-driven trip: "+from.name+" → "+to.name);
+    return car;
+  }
+  return null;
+}
+function tickHumanTraffic() {
+  humanSpawnCredit+=SIM_MIN_PER_TICK*humanTrafficRate/HUMAN_BASE_INTERVAL;
+  if(humanSpawnCredit>=1 && spawnHumanCar())humanSpawnCredit-=1;
+  // A blocked origin retries later without creating a large delayed burst.
+  humanSpawnCredit=Math.min(humanSpawnCredit,1);
+}
+document.getElementById("human-traffic").addEventListener("input",e=>{
+  humanTrafficRate=Number(e.target.value);
+  document.getElementById("human-traffic-value").textContent=humanTrafficRate+"×";
+  updateHUD();
+});
+function gridlockBreakdown() {
+  const counts={fleet:0,human:0,response:0,blocked:0};
+  const kinds=new Map(cars.map(c=>[c.id,c.kind]));
+  for(const edge of Object.values(edges))for(const id of edge.claims) {
+    const kind=kinds.get(id);
+    if(!kind)continue;
+    counts[kind==="human"?"human":["police","fire","firecar","recovery"].includes(kind)?"response":"fleet"]++;
+  }
+  const blocked=new Set([...directionalBlocks.values()].filter(b=>b.until>simElapsed).map(b=>edgeKey(b.from,b.to)));
+  for(const o of ix.obstacles)if(o.active && ["parked truck","jaywalker"].includes(o.kind))blocked.add(o.edgeKey);
+  counts.blocked=blocked.size;
+  const values=Object.fromEntries(Object.entries(counts).map(([key,n])=>[key,n/N_EDGES]));
+  return {values,total:Object.values(values).reduce((a,b)=>a+b,0)};
+}
+
 let autoObstacleSpawnTimer = 60;
 
 // ============================================================
@@ -2155,6 +2261,7 @@ function spawnAutoObstacle() {
   const midX = (ax + bx) / 2, midY = (ay + by) / 2;
   const kinds = ["jaywalker", "parked truck", "manual-driven car"];
   const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  if(kind==="manual-driven car")return;
   const o = {
     x: midX, y: midY,
     kind,
@@ -2621,7 +2728,7 @@ function drawCars() {
     ctx.lineWidth = 1;
     ctx.stroke();
     // car number (white) at front, passenger count (black) at back
-    const carNum = car.id.split("-")[1] || "?";
+    const carNum = car.kind==="human" ? "H" : car.id.split("-")[1] || "?";
     const offF = longR * 0.55;
     const fx = x + Math.cos(heading) * offF;
     const fy = y + Math.sin(heading) * offF;
@@ -3561,9 +3668,14 @@ function updateHUD() {
   document.getElementById("avg-queue").textContent=averageQueue==null ? "—" : averageQueue.toFixed(1);
   document.getElementById("avg-trip").textContent = completedCount ?
     (completedRideMinutes/completedCount).toFixed(1) : "—";
-  let totalClaims = 0;
-  for (const k in edges) totalClaims += edges[k].claims.size;
-  const gridlock = totalClaims / N_EDGES;
+  const pressure=gridlockBreakdown(),gridlock=pressure.total;
+  for(const [key,value] of Object.entries(pressure.values)) {
+    const share=gridlock?value/gridlock*100:0;
+    document.getElementById("pressure-"+key+"-value").textContent=value.toFixed(3)+" · "+Math.round(share)+"%";
+    document.getElementById("pressure-"+key+"-bar").style.width=share+"%";
+  }
+  document.getElementById("traffic-following").textContent=cars.filter(c=>c._followingTraffic&&c.route).length+" vehicles slowed or waiting behind traffic.";
+  document.getElementById("human-traffic-hint").textContent=Math.round(60/HUMAN_BASE_INTERVAL*humanTrafficRate)+" arrivals/hour · "+cars.filter(c=>c.kind==="human"&&c.state!=="human_done").length+" on road. Existing cars finish their routes when reduced.";
   document.getElementById("gridlock").textContent = gridlock.toFixed(2);
   latestMetrics = { active, queued: queue.length, pooled: pooledCount, gridlock };
   if (spectateCar) {
@@ -3703,6 +3815,7 @@ function simulationStep() {
     advanceSimulationTime(SIM_MIN_PER_TICK);
     checkSchedules();
     tickEvents();
+    tickHumanTraffic();
     tickRareEvents();
     tickEmergencyVehicles();
     shareQueuedRides();
@@ -3716,6 +3829,8 @@ function simulationStep() {
     advanceSimulationTime(SIM_MIN_PER_TICK);
     tickStoplights();
     stepCars(1, ix.drivingCar);
+    for(const human of cars.filter(c=>c.kind==="human"&&c.state!=="human_done"))stepCars(1,human);
+    tickEmergencyVehicles();
     updateObstacles();
   }
   retireFinishedBuses();
@@ -3754,11 +3869,12 @@ document.getElementById("pause").addEventListener("click", () => {
 });
 document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
-  for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || cars[i].kind==="recovery")cars.splice(i,1);
+  for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || ["recovery","human"].includes(cars[i].kind))cars.splice(i,1);
   featuredCar=null;cockpitCar=null;
   incidents.length=0;directionalBlocks.clear();
   nextPoliceAt=180*(.5+Math.random());nextFireAt=600*(.5+Math.random());nextTroubleAt=480*(.5+Math.random());
   simMinute = DAY_START;
+  humanSpawnCredit=0;
   sharedPickups=0;
   passengerTransfers.length=0;
   for(const evt of eventSchedule) evt.fired=false;
@@ -3791,6 +3907,7 @@ document.getElementById("reset").addEventListener("click", () => {
     c._boardingDepartureSeconds=0;
     c._troublePending=false;c._emergencyBlocked=false;
     c._toDropoffRoute = null;
+    c._followingTraffic=false;c._followingLogged=false;
     c._slowedTicks = 0;
     c._obstacleKind = null;
     c._obstacle = null;
