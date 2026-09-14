@@ -24,6 +24,12 @@ The fleet starts with 15 sedans (4 seats), 14 shuttles (8 seats), and five large
 
 Optional Anthropic narration still uses the source app's direct browser API call. Paste a key in Settings; it is held in memory and cleared by refresh. Core simulation needs no API key. The optional paid API call is not covered by the automated tests.
 
+## Live ride statistics
+
+**Completed** counts every passenger delivered since Reset day and continues beyond 1,000. The separate diagnostic trip history retains only the latest 1,000 records to bound memory.
+
+**Avg ride (min)** is the mean of each completed passenger's own boarding-to-dropoff duration across all completions since Reset day. It excludes time waiting for pickup and vehicle activity before boarding or after dropoff. Time spent aboard during other pickups, stops or detours remains part of that person's ride. A monotonic simulation clock keeps durations valid across daily schedule rollover, and interactive driving advances the same clock. Reset day clears the count and average.
+
 ## City apartments and defaults
 
 Riverbend school has been replaced by **Riverbend Apts**, a 100-apartment residential building. Home assignment and residential event destinations are weighted by housing units, so the building contributes 100 potential homes. Its residents count toward the selected population, rather than adding 100 people on top. Hillside is the remaining school; Riverbend school events have been removed. The apartment building has a distinct map color and a taller, windowed POV appearance.

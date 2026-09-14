@@ -151,7 +151,7 @@ console.log('PASS: five assigned buses, 20-rider pooling, inbound/outbound servi
    setRoute(shuttle,dijkstra(shuttle.nodeId,CENTRAL_NODE));shuttle.state='returning';
    const next=shuttle.route.nodes[1];
    const curb={name:'Roadside test stop',accessId:next,development:0};
-   const ride={...back,id:nextReqId++,from:curb,pickupId:next};queue.push(ride);
+   const ride={...back,id:nextReqId++,from:curb,pickupId:next,pickedUpAt:undefined,completedAt:undefined};queue.push(ride);
    if(!tryShareRide(shuttle)) throw Error('returning shuttle ignored on-route pickup');
    for(let t=0;t<3000 && shuttle.state!=='idle';t++){stepCars(20,shuttle);tickStoplights();}
    if(completedTrips.length!==3) throw Error('shuttle rider not delivered');
@@ -228,3 +228,41 @@ console.log('PASS: fifth connected neighborhood within one block, two homes at e
  assert.equal(elements.get('ctl-sed').textContent,15);
 }
 console.log('PASS: startup defaults and residential apartment/school event configuration.');
+{
+ const {run,elements}=boot();
+ run(`
+   const vehicle=makeCar('shuttle','timing-test');cars.splice(0,cars.length,vehicle);
+   const from=buildingByName('Central Stn'),to=buildingByName('Hillside');
+   const riders=[0,1].map(i=>({id:90000+i,from,to,pickupId:from.accessId,dropoffId:to.accessId,requestedAt:0}));
+   assignMultiStop(vehicle,riders,'TIMING TEST');
+   arriveAtRouteEnd(vehicle);
+   simElapsed=120;stepCars(1,vehicle);
+   simElapsed=122;stepCars(1,vehicle);
+   stepCars(1,vehicle); // finish boarding and start dropoff segment
+   simElapsed=140;vehicle.nodeId=to.accessId;arriveAtRouteEnd(vehicle);
+   if(completedCount!==2 || completedRideMinutes!==38)throw Error('per-person boarding clocks incorrect');
+   if(completedTrips[0].tripMin!==20 || completedTrips[1].tripMin!==18)throw Error('queue time included in ride duration');
+   if(completePassenger(riders[0]))throw Error('passenger counted twice');
+   updateHUD();
+ `);
+ assert.equal(elements.get('avg-trip').textContent,'19.0');
+ run(`
+   for(let i=0;i<1005;i++) {
+     const request={requestedAt:simElapsed-200};boardPassenger(request);
+     simElapsed+=10;completePassenger(request);
+   }
+   updateHUD();
+   if(completedCount!==1007 || completedTrips.length!==1000)throw Error('completion counter capped with history');
+   if(completedRideMinutes!==10088)throw Error('all-time ride sum incorrect');
+   const midnightRider={requestedAt:simElapsed};boardPassenger(midnightRider);
+   simMinute=1439;advanceSimulationTime(4);completePassenger(midnightRider);
+   if(completedTrips.at(-1).tripMin!==4)throw Error('day rollover broke rider duration');
+ `);
+ assert.equal(elements.get('completed-rides').textContent,1007);
+ elements.get('reset').click();run('updateHUD()');
+ assert.equal(run('completedCount'),0);
+ assert.equal(run('simElapsed'),0);
+ assert.equal(elements.get('avg-trip').textContent,'—');
+ assert.equal(elements.get('completed-rides').textContent,0);
+}
+console.log('PASS: distinct passenger boarding times, excluded queue time, 1000+ completions, bounded history, day rollover and clean metrics reset.');

@@ -46,3 +46,7 @@ Existing stop order is immutable. Both total added driving and added driving bef
 ## Scope and assumptions
 
 This remains an illustrative simulation, not an engineering traffic or accessibility model. The source's profiles, fleet, pooling strategy, traffic behavior and optional API narration are preserved. Routing still uses a simple Dijkstra queue and approximate alternate paths; “congestion” means route claims, not measured road capacity. Travel timing retains the source's calibration. No external map tiles, backend, geolocation or geographic dataset is needed.
+
+## Passenger timing and totals
+
+`simElapsed` advances monotonically while simulation time runs, independently of the daily display clock. Request timestamps, boarding timestamps and idle-depot timers use this clock. Each actual boarding calls `boardPassenger`; each delivered passenger calls `completePassenger` once. `completedCount` and `completedRideMinutes` accumulate without using the bounded history length. The HUD reports their ratio, while `completedTrips` retains only the latest 1,000 per-person ride/wait records. Daily clock rollover preserves ongoing timestamps; Reset day resets the clocks and aggregates.

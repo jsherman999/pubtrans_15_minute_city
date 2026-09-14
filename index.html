@@ -234,7 +234,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="row"><span>Queued</span><span id="queued-rides">0</span></div>
       <div class="row"><span>Completed</span><span id="completed-rides">0</span></div>
       <div class="row"><span>Pooled riders</span><span id="pooled-rides">0</span></div>
-      <div class="row"><span>Avg trip (min)</span><span id="avg-trip">—</span></div>
+      <div class="row"><span title="Mean boarding-to-dropoff time per completed passenger since Reset day; excludes queue time">Avg ride (min)</span><span id="avg-trip">—</span></div>
       <div class="row"><span>Gridlock</span><span id="gridlock">0.00</span></div>
       <div class="row"><span>Sim load</span><span id="perf-cpu">—</span></div>
       <div class="row" id="perf-mem-row"><span>JS heap</span><span id="perf-mem">—</span></div>
@@ -623,6 +623,7 @@ function kShortest(srcId, dstId, k = K_PATHS) {
 // ============================================================
 // Time
 // ============================================================
+let simElapsed = 0;             // monotonic minutes since Reset day
 let simMinute = DAY_START;       // start 07:30
 let paused = false;
 function clockStr() {
@@ -800,7 +801,20 @@ function buildPopulation() {
 // ============================================================
 const queue = [];
 const cars = [];
-const completedTrips = [];
+const completedTrips = [];      // bounded diagnostic history, not the total
+let completedCount = 0;
+let completedRideMinutes = 0;
+function boardPassenger(request) { request.pickedUpAt = simElapsed; }
+function completePassenger(request) {
+  if(!Number.isFinite(request.pickedUpAt) || request.completedAt != null) return false;
+  request.completedAt=simElapsed;
+  const tripMin=simElapsed-request.pickedUpAt;
+  completedCount++;
+  completedRideMinutes+=tripMin;
+  completedTrips.push({tripMin,waitMin:request.pickedUpAt-request.requestedAt});
+  if(completedTrips.length>1000)completedTrips.splice(0,completedTrips.length-1000);
+  return true;
+}
 let nextReqId = 1;
 let pooledCount = 0;
 let waitingByBldg = new Map();      // building -> # people waiting there for pickup
@@ -855,7 +869,7 @@ function checkSchedules() {
           to: s.to,
           pickupId: s.from.accessId,
           dropoffId: s.to.accessId,
-          requestedAt: simMinute,
+          requestedAt: simElapsed,
         };
         queue.push(req);
         dbg("REQUEST", "r#" + req.id + " " + h.profile + " #" + h.id + ": " + s.from.name + " → " + s.to.name);
@@ -1139,7 +1153,7 @@ function dispatch() {
   // PHASE C — shuttle pools: 2+ riders to the same destination (within the
   // pooling window), with pickups visited in nearest-neighbor order.
   for (const [, reqs] of groupBy(r => r.dropoffId)) {
-    const poolable = reqs.filter(r => !dispatched.has(r.id) && simMinute - r.requestedAt < POOL_WINDOW);
+    const poolable = reqs.filter(r => !dispatched.has(r.id) && simElapsed - r.requestedAt < POOL_WINDOW);
     if (poolable.length < 2) continue;
     const shuttle = findIdleCar("shuttle");
     if (!shuttle) continue;
@@ -1168,7 +1182,7 @@ function returnIdleCars() {
   for (const car of cars) {
     if (car.state !== "idle" || car.interactive) continue;
     if (car.nodeId === CENTRAL_NODE) continue;            // already parked at the hub
-    if (simMinute - car._idleSince < IDLE_RETURN_MIN) continue;
+    if (simElapsed - car._idleSince < IDLE_RETURN_MIN) continue;
     const route = dijkstra(car.nodeId, CENTRAL_NODE);
     if (!route) continue;
     if (route.edges.length === 0) { car.nodeId = CENTRAL_NODE; continue; }
@@ -1262,6 +1276,7 @@ function stepCars(speedMult, filterCar = null) {
     if (car.state === "boarding_wait") {
       if (car._boarding && car._boarding.length > 0) {
         const r = car._boarding.shift();              // one passenger boards this tick
+        boardPassenger(r);
         animateTransfer(car,r,true);
         car.riders.push(r);
         const qi = car.pickupQueue.indexOf(r);
@@ -1365,7 +1380,7 @@ function arriveAtRouteEnd(car) {
     if(car._activeSeg?.type === "depot") { finishTrip(car); return; }
     car.route = null;
     car.state = "idle";
-    car._idleSince = simMinute;
+    car._idleSince = simElapsed;
     return;
   }
   // Multi-stop dispatch flow (sedans, pools, sweeps)
@@ -1380,23 +1395,23 @@ function arriveAtRouteEnd(car) {
     }
     // dropoff: alight the riders bound for this node
     for (const [transferIndex,r] of seg.reqs.entries()) {
-      animateTransfer(car,r,false,transferIndex);
       const ri = car.riders.indexOf(r);
-      if (ri >= 0) car.riders.splice(ri, 1);
-      completedTrips.push({ tripMin: simMinute - r.requestedAt });
+      if(ri<0) continue;
+      animateTransfer(car,r,false,transferIndex);
+      car.riders.splice(ri, 1);
+      completePassenger(r);
     }
-    if (completedTrips.length > 1000) completedTrips.splice(0, completedTrips.length - 1000);
-    const avgWait = seg.reqs.reduce((s, r) => s + (simMinute - r.requestedAt), 0) / seg.reqs.length;
+    const avgRide = seg.reqs.reduce((s, r) => s + (simElapsed - r.pickedUpAt), 0) / seg.reqs.length;
     dbg("DROPOFF", car.id + " dropped off " + seg.reqs.length + " rider" +
       (seg.reqs.length === 1 ? "" : "s") + " at " + (seg.reqs[0].to ? seg.reqs[0].to.name : "destination") +
-      " · avg trip " + avgWait.toFixed(1) + " sim-min");
+      " · avg ride " + avgRide.toFixed(1) + " sim-min");
     advanceSegment(car);
     return;
   }
   // Sedan flow
   if (car.state === "enroute_pickup") {
     car.riders = car.pickupQueue.slice();
-    car.riders.forEach((r,i)=>animateTransfer(car,r,true,i));
+    car.riders.forEach((r,i)=>{boardPassenger(r);animateTransfer(car,r,true,i);});
     const first = car.pickupQueue[0];
     if (first) {
       dbg("PICKUP", car.id + " picked up r#" + first.id + " at " + first.from.name);
@@ -1420,16 +1435,15 @@ function finishTrip(car) {
   car._sharingDetour=0;
   if (car.riders.length > 0) {
     const destName = car.riders[0].to ? car.riders[0].to.name : (ix.dest ? ix.dest.name : "destination");
-    const avgWait = car.riders.reduce((s, r) => s + (simMinute - r.requestedAt), 0) / car.riders.length;
+    const avgRide = car.riders.reduce((s, r) => s + (simElapsed - r.pickedUpAt), 0) / car.riders.length;
     dbg("DROPOFF", car.id + " dropped off " + car.riders.length + " rider" +
       (car.riders.length === 1 ? "" : "s") + " at " + destName +
-      " · avg trip " + avgWait.toFixed(1) + " sim-min");
+      " · avg ride " + avgRide.toFixed(1) + " sim-min");
   }
   for (const [i,r] of car.riders.entries()) {
     animateTransfer(car,r,false,i);
-    completedTrips.push({ tripMin: simMinute - r.requestedAt });
+    completePassenger(r);
   }
-  if (completedTrips.length > 1000) completedTrips.splice(0, completedTrips.length - 1000);
   car.riders = [];
   car.pickupQueue = [];
   car.state = "idle";
@@ -1447,7 +1461,7 @@ function finishTrip(car) {
   car._justCleared = false;
   car._waitingAtNode = null;
   car._fromEdge = null;
-  car._idleSince = simMinute;   // start the idle clock; returns to the depot once it expires
+  car._idleSince = simElapsed;   // start the idle clock; returns to the depot once it expires
   if (car.interactive) {
     car.interactive = false;
     car.sensorActive = false;
@@ -1675,7 +1689,8 @@ document.getElementById("ix-drive").addEventListener("click", () => {
   car.pickupQueue = [];
   car._segments = null;
   car._activeSeg = null;
-  car.riders = [{ human: { id: -1 }, from:ix.source,to:ix.dest,requestedAt: simMinute, dropoffId: ix.dest.accessId }];
+  car.riders = [{ human: { id: -1 }, from:ix.source,to:ix.dest,requestedAt: simElapsed, dropoffId: ix.dest.accessId }];
+  boardPassenger(car.riders[0]);
   animateTransfer(car,car.riders[0],true);
   // initial heading so FPV doesn't open looking the wrong way
   if (route.nodes.length >= 2) {
@@ -1879,7 +1894,7 @@ function fireEvent(evt) {
       from, to,
       pickupId: from.accessId,
       dropoffId: to.accessId,
-      requestedAt: simMinute,
+      requestedAt: simElapsed,
     };
     queue.push(req);
     injected++;
@@ -3292,14 +3307,11 @@ function updateHUD() {
   document.getElementById("ctl-shu-active").textContent = countCars("shuttle") - shuParked;
   document.getElementById("ctl-bus-active").textContent = countCars("bus") - busParked;
   document.getElementById("queued-rides").textContent = queue.length;
-  document.getElementById("completed-rides").textContent = completedTrips.length;
+  document.getElementById("completed-rides").textContent = completedCount;
   document.getElementById("pooled-rides").textContent = pooledCount;
   document.getElementById("population").textContent = humans.length;
-  if (completedTrips.length > 0) {
-    const recent = completedTrips.slice(-100);
-    const avg = recent.reduce((s, t) => s + t.tripMin, 0) / recent.length;
-    document.getElementById("avg-trip").textContent = avg.toFixed(1);
-  }
+  document.getElementById("avg-trip").textContent = completedCount ?
+    (completedRideMinutes/completedCount).toFixed(1) : "—";
   let totalClaims = 0;
   for (const k in edges) totalClaims += edges[k].claims.size;
   const gridlock = totalClaims / N_EDGES;
@@ -3427,15 +3439,20 @@ function recordTick(ms, now) {
   }
 }
 
+function advanceSimulationTime(minutes) {
+  simElapsed+=minutes;
+  simMinute+=minutes;
+  if(simMinute>=24*60) {
+    simMinute=DAY_START+(simMinute-24*60);
+    for(const h of humans)for(const s of h.schedule)s.requested=false;
+    for(const evt of eventSchedule)evt.fired=false;
+  }
+}
+
 function tick() {
   const __t0 = performance.now();
   if (mode === "auto" && !paused) {
-    simMinute += SIM_MIN_PER_TICK * speedMult;
-    if (simMinute >= 24 * 60) {
-      simMinute = DAY_START;
-      for (const h of humans) for (const s of h.schedule) s.requested = false;
-      for (const evt of eventSchedule) evt.fired = false;
-    }
+    advanceSimulationTime(SIM_MIN_PER_TICK * speedMult);
     checkSchedules();
     tickEvents();
     shareQueuedRides();
@@ -3445,7 +3462,8 @@ function tick() {
     stepCars(speedMult);
     tickAutoObstacles();
     updateObstacles();
-  } else if (mode === "interactive" && ix.drivingCar) {
+  } else if (mode === "interactive" && ix.drivingCar && ix.drivingCar.state!=="idle") {
+    advanceSimulationTime(SIM_MIN_PER_TICK * speedMult);
     tickStoplights();
     stepCars(speedMult, ix.drivingCar);
     updateObstacles();
@@ -3481,6 +3499,9 @@ document.getElementById("reset").addEventListener("click", () => {
   currentEvent=null;
   queue.length = 0;
   completedTrips.length = 0;
+  completedCount = 0;
+  completedRideMinutes = 0;
+  simElapsed = 0;
   pooledCount = 0;
   metricsHist.length = 0;
   surgePending = false;
@@ -3492,7 +3513,7 @@ document.getElementById("reset").addEventListener("click", () => {
     c.nodeId = CENTRAL_NODE;                 // re-park the whole fleet at the depot
     const [cx, cy] = nodeXY(CENTRAL_NODE);
     c.pos.x = cx; c.pos.y = cy;
-    c._idleSince = simMinute;
+    c._idleSince = simElapsed;
     c.route = null;
     c.riders = [];
     c.pickupQueue = [];
@@ -3584,7 +3605,7 @@ function removeCars(kind, n) {
     releaseRemaining(car);
     if (car.pickupQueue) {                     // re-queue riders not yet picked up
       for (const r of car.pickupQueue) {
-        if (!car.riders.includes(r)) { r.requestedAt = simMinute; queue.push(r); }
+        if (!car.riders.includes(r)) { r.requestedAt = simElapsed; queue.push(r); }
       }
     }
     if (car === spectateCar) stopSpectate();
