@@ -336,3 +336,80 @@ console.log('PASS: running queue average includes assigned/unassigned riders, fr
  `);
 }
 console.log('PASS: vehicle waits for the last boarding figure and removes it before departure.');
+// Emergency dwell times use the simulation clock; closures affect one direction.
+{
+ const {run,elements}=boot(729);
+ run(`
+   dbg=()=>{};cars.length=0;
+   const target=developments[0].homes[0];
+   const incident=triggerEmergency('police',target),officer=incident.responders[0];
+   for(let i=0;i<2000&&officer.state!=='emergency_scene';i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();stepCars(1);}
+   if(officer.state!=='emergency_scene')throw Error('police never arrived');
+   const block=[...directionalBlocks.values()][0];
+   if(!directionBlocked(block.from,block.to)||directionBlocked(block.to,block.from))throw Error('closure direction wrong');
+   if(directionBlocked(block.from,block.to,incident.id))throw Error('responders blocked by own incident');
+   simElapsed=officer.sceneUntil-.01;tickEmergencyVehicles();
+   if(officer.state!=='emergency_scene'||officer.riders.length)throw Error('left before five minutes');
+   simElapsed=officer.sceneUntil;tickEmergencyVehicles();
+   if(officer.state!=='emergency_return'||officer.riders.length!==1||directionalBlocks.size)throw Error('police return missing');
+   for(let i=0;i<2000&&cars.length;i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();stepCars(1);tickEmergencyVehicles();}
+   if(cars.length||incidents.length||completedCount!==1)throw Error('police failed to return passenger');
+   const fire=triggerEmergency('fire',target);
+   if(fire.responders.filter(c=>c.kind==='fire').length!==2||fire.responders.filter(c=>c.kind==='firecar').length!==2)throw Error('fire fleet incorrect');
+   for(let i=0;i<2000&&!fire.responders.every(c=>c.state==='emergency_scene');i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();stepCars(1);}
+   if(!fire.responders.every(c=>c.state==='emergency_scene'))throw Error('fire vehicles never arrived');
+   const firstEnd=Math.min(...fire.responders.map(c=>c.sceneUntil));
+   simElapsed=firstEnd-.01;tickEmergencyVehicles();
+   if(fire.responders.some(c=>c.state!=='emergency_scene'))throw Error('fire departed early');
+   for(let i=0;i<3000&&cars.length;i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();tickEmergencyVehicles();stepCars(1);}
+   if(cars.length||incidents.length||directionalBlocks.size)throw Error('fire response did not clear');
+ `);
+ elements.get('trigger-emergency').click();
+ assert.equal(run('incidents.length'),1);
+ elements.get('reset').click();
+ assert.equal(run('incidents.length+directionalBlocks.size+cars.filter(c=>c.incident).length'),0);
+}
+console.log('PASS: police pickup/return, four fire responders, timed directional closures, trigger and reset.');
+{
+ const {run}=boot(930);
+ run(`
+   dbg=()=>{};cars.length=0;
+   const broken=makeCar('shuttle','broken-test');cars.push(broken);
+   broken.nodeId=developments[0].homes[0].accessId;
+   const riders=[developments[0].homes[2],buildingByName('Central Stn')].map((to,i)=>({id:9000+i,requestedAt:0,pickedUpAt:1,from:developments[0].homes[0],to,pickupId:broken.nodeId,dropoffId:to.accessId}));
+   broken.riders=riders.slice();simElapsed=2;
+   const rescue=stallVehicle(broken);
+   if(!rescue||rescue.rescueTarget!==broken||broken.state!=='vehicle_trouble')throw Error('recovery not dispatched');
+   for(let i=0;i<2000&&rescue.rescueTarget;i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();stepCars(1);tickEmergencyVehicles();}
+   if(broken.riders.length||rescue.riders.length!==2||broken.state!=='trouble_repair')throw Error('transfer missing');
+   if(riders.some(r=>r.pickedUpAt!==1)||boardedQueueCount)throw Error('transfer reset passenger timing');
+   for(let i=0;i<4000&&riders.some(r=>r.completedAt==null);i++){simElapsed+=SIM_MIN_PER_TICK;tickStoplights();tickEmergencyVehicles();stepCars(1);}
+   if(riders.some(r=>r.completedAt==null)||completedCount!==2)throw Error('recovery failed delivery');
+   if(Math.abs(completedRideMinutes-riders.reduce((s,r)=>s+r.completedAt-1,0))>1e-7)throw Error('wrong recovered ride time');
+ `);
+}
+console.log('PASS: immediate occupied-vehicle recovery, all destinations delivered and original pickup times preserved.');
+{
+ const {run}=boot(321);
+ run(`
+   dbg=()=>{};cars.length=0;
+   const rescue=makeCar('recovery','retry-test');cars.push(rescue);
+   const to=developments[0].homes[0];
+   const request={id:9876,requestedAt:0,pickedUpAt:1,to,dropoffId:to.accessId};
+   rescue.riders=[request];simElapsed=2;
+   for(const e of Object.values(edges)) {
+     if(e.a===to.accessId||e.b===to.accessId) {
+       const from=e.a===to.accessId?e.b:e.a;
+       directionalBlocks.set('test:'+from,{from,to:to.accessId,until:7,incidentId:77});
+     }
+   }
+   planRecoveryDrops(rescue);
+   if(rescue.state!=='recovery_wait')throw Error('recovery should wait for closed destination');
+   const effects=passengerTransfers.length;
+   for(let i=0;i<10;i++)tickEmergencyVehicles();
+   if(rescue.riders[0]!==request||passengerTransfers.length!==effects||request.pickedUpAt!==1)throw Error('retry lost rider or repeated transfer');
+   simElapsed=7;tickEmergencyVehicles();
+   if(rescue.state!=='enroute_dropoff'||!rescue.route)throw Error('recovery did not resume after reopening');
+ `);
+}
+console.log('PASS: recovery safely waits for a closed destination and retries without duplicate transfers.');

@@ -66,6 +66,9 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
 #debug-log .cat-event .cat { color: #f59e0b; }
 #debug-log .cat-narration .cat { color: #e879f9; }
 #debug-log .cat-system .cat { color: #888; }
+#debug-log .cat-emergency .cat { color: #fb7185; }
+#debug-log .cat-breakdown .cat { color: #fbbf24; }
+#debug-log .cat-recovery .cat { color: #e2e8f0; }
 #debug-log .msg { color: #ddd; word-break: break-word; }
 #map { background: #1f2024; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: block; max-width: 100%; max-height: 100%; }
 #map.interactive { cursor: crosshair; }
@@ -169,6 +172,10 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#14b8a6"></span>Sedan (cap 4)</div>
       <div class="leg"><span class="sw" style="background:#f97316"></span>Shuttle (cap 8)</div>
       <div class="leg"><span class="sw" style="background:#a78bfa"></span>Large bus (cap 20)</div>
+      <div class="leg"><span class="sw" style="background:#38bdf8"></span>Police sedan</div>
+      <div class="leg"><span class="sw" style="background:#f43f5e"></span>Fire trucks / support</div>
+      <div class="leg"><span class="sw" style="background:#e2e8f0"></span>Recovery vehicle</div>
+      <div class="leg"><span class="sw" style="background:#b86c55"></span>Police / Fire station</div>
       <div class="leg"><span class="sw" style="background:#ef4444"></span>Obstacle</div>
       <div class="leg"><span class="sw" style="background:#fef08a"></span>Person boarding</div>
       <div class="leg"><span class="sw" style="background:#86efac"></span>Person alighting</div>
@@ -215,6 +222,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <h3>Controls</h3>
       <div class="row"><label>Speed</label><input type="range" id="speed" min="1" max="20" value="1"><span id="speed-val" style="min-width:32px;text-align:right">1×</span></div>
       <div class="btn-row"><button id="pause">Pause</button><button id="reset">Reset day</button></div>
+      <div class="btn-row"><button id="trigger-emergency">Trigger Emergency</button></div>
+      <p class="hint small" id="emergency-status">No active emergencies.</p>
       <p class="hint small">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
       <p class="hint small" style="margin-top:8px">Click any active car on the map to spectate it (its POV opens in the Driver POV pane below; speed drops to 1×).</p>
     </section>
@@ -321,6 +330,7 @@ const COLORS = {
   sedan: "#14b8a6",
   shuttle: "#f97316",
   bus: "#a78bfa",
+  police: "#38bdf8", fire: "#f43f5e", firecar: "#fb7185", recovery: "#e2e8f0", emergency: "#b86c55",
   routePalette: ["#60a5fa", "#a78bfa", "#f472b6", "#fb923c"],
   chosenRoute: "#22c55e",
   obstacle: "#ef4444",
@@ -335,6 +345,7 @@ const COLORS = {
 const extraNodes = new Map();
 const developments = [];
 const BUILDINGS = [
+  { col:3,row:2,type:"emergency",name:"Police / Fire" },
   { col:0,row:0,type:"employer",name:"NorthCo" },
   { col:5,row:0,type:"employer",name:"EastBank" },
   { col:0,row:5,type:"employer",name:"SouthLabs" },
@@ -349,7 +360,7 @@ const BUILDINGS = [
   { col:0,row:2,type:"residential",name:"Birch Hgts" },
   { col:5,row:3,type:"residential",name:"Oak Hgts" },
 ];
-const buildingsByType = { employer: [], grocery: [], school: [], station: [], residential: [] };
+const buildingsByType = { employer: [], grocery: [], school: [], station: [], residential: [], emergency: [] };
 for (const b of BUILDINGS) {
   b.color = b.apartments ? "#c29aca" : COLORS[b.type];
   b.accessId = nodeId(b.col, b.row);
@@ -375,6 +386,7 @@ function buildingCenter(b) {
 function edgeKey(a, b) { return a < b ? a + "-" + b : b + "-" + a; }
 
 const adj = {};            // nodeId -> [{ to, key }]
+const directionalBlocks = new Map();
 const edges = {};          // edgeKey -> { a, b, claims: Set<carId> }
 function addEdge(a, b) {
   const k = edgeKey(a, b);
@@ -551,7 +563,7 @@ function canCrossStoplight(nodeId, fromEdgeKey) {
 // ============================================================
 // Routing — Dijkstra with congestion-weighted edges
 // ============================================================
-function dijkstra(srcId, dstId, banEdge = null) {
+function dijkstra(srcId, dstId, banEdge = null, incidentId = null) {
   if (srcId === dstId) return { nodes: [srcId], edges: [], cost: 0 };
   const dist = new Map();
   const prev = new Map();
@@ -571,6 +583,7 @@ function dijkstra(srcId, dstId, banEdge = null) {
       const { to, key } = neighbors[i];
       if (key === banEdge) continue;
       const e = edges[key];
+      if(directionBlocked(u,to,incidentId))continue;
       // one-way: only traverse in the allowed direction
       if (e.oneWay === "ab" && u !== e.a) continue;
       if (e.oneWay === "ba" && u !== e.b) continue;
@@ -853,7 +866,7 @@ function makeCar(kind, id, development = null) {
   const [x, y] = nodeXY(CENTRAL_NODE);   // start parked at the depot
   return {
     id, kind, development, retiring: false,
-    capacity: kind === "bus" ? 20 : kind === "sedan" ? 4 : 8,
+    capacity: kind === "bus" ? 20 : ["sedan","police","firecar"].includes(kind) ? 4 : 8,
     nodeId: CENTRAL_NODE,
     pos: { x, y },
     heading: 0,
@@ -953,6 +966,163 @@ function nearestOrder(start, ids) {
     order.push(cur);
   }
   return order;
+}
+
+// Emergency fleets are separate from the adjustable public transit fleet.
+const incidents=[];
+let incidentSeq=0,recoverySeq=0;
+let nextPoliceAt=180*(.5+Math.random()),nextFireAt=600*(.5+Math.random()),nextTroubleAt=480*(.5+Math.random());
+function nextRareEvent(mean) {return simElapsed + mean*(.5+Math.random());}
+function directionBlocked(from,to,incidentId=null) {
+  return [...directionalBlocks.values()].some(block=>block.from===from && block.to===to && block.until>simElapsed && block.incidentId!==incidentId);
+}
+function releaseAllClaims(car) {for(const e of Object.values(edges))e.claims.delete(car.id);}
+function responseRoute(car,destination) {
+  const route=dijkstra(car.nodeId,destination,null,car.incident?.id);
+  if(!route)return false;
+  releaseAllClaims(car);claimRoute(car,route);setRoute(car,route);return true;
+}
+function triggerEmergency(kind=Math.random()<.7?"police":"fire",target=null) {
+  target=target || pick(BUILDINGS.filter(b=>["residential","employer","grocery"].includes(b.type)));
+  const base=buildingByName("Police / Fire");
+  const incident={id:++incidentSeq,kind,target,responders:[],finished:false};
+  incidents.push(incident);
+  const kinds=kind==="police" ? ["police"] : ["fire","fire","firecar","firecar"];
+  for(const [i,vehicleKind] of kinds.entries()) {
+    const car=makeCar(vehicleKind,vehicleKind+"-"+incident.id+"-"+(i+1));
+    car.incident=incident;car.nodeId=base.accessId;
+    [car.pos.x,car.pos.y]=nodeXY(car.nodeId);
+    car.state="emergency_outbound";
+    cars.push(car);incident.responders.push(car);
+    responseRoute(car,target.accessId);
+  }
+  dbg("EMERGENCY",kind.toUpperCase()+" #"+incident.id+" dispatched to "+target.name+" · "+kinds.length+" response vehicles");
+  return incident;
+}
+function arriveEmergency(car) {
+  const incident=car.incident;
+  if(car.state==="emergency_outbound") {
+    const nodes=car.route?.nodes || [];
+    const from=nodes.length>1?nodes[nodes.length-2]:null;
+    car.state="emergency_scene";car.sceneUntil=simElapsed+(incident.kind==="police"?5:10);
+    car.route=null;releaseAllClaims(car);
+    if(from!=null) {
+      const key=incident.id+":"+from+":"+car.nodeId;
+      const previous=directionalBlocks.get(key);
+      directionalBlocks.set(key,{from,to:car.nodeId,until:Math.max(car.sceneUntil,previous?.until || 0),incidentId:incident.id});
+    }
+    dbg("EMERGENCY",car.id+" arrived at "+incident.target.name+" · blocking arrival direction for "+(incident.kind==="police"?5:10)+" sim-min");
+    return;
+  }
+  if(car.state==="emergency_return") {
+    for(const [i,r] of car.riders.entries()) {animateTransfer(car,r,false,i);completePassenger(r);}
+    car.riders=[];car.route=null;car.state="response_done";releaseAllClaims(car);
+    dbg("EMERGENCY",car.id+" returned to Police / Fire"+(incident.kind==="police"?" · passenger delivered":""));
+    if(incident.responders.every(c=>c.state==="response_done")) {
+      incident.finished=true;dbg("EMERGENCY",incident.kind.toUpperCase()+" #"+incident.id+" complete");
+    }
+  }
+}
+function stallVehicle(car) {
+  car._troublePending=false;
+  if(!car.riders.length)return;
+  const node=car.nodeId;
+  // Stall at the next road node so recovery has an exact reachable road stop.
+  [car.pos.x,car.pos.y]=nodeXY(node);
+  for(const request of car.pickupQueue)if(!car.riders.includes(request))queue.push(request);
+  car.pickupQueue=[];car._segments=null;car._activeSeg=null;car._boarding=null;
+  releaseAllClaims(car);car.route=null;car.state="vehicle_trouble";car.progress=0;
+  const rescue=makeCar("recovery","recovery-"+(++recoverySeq));
+  rescue.capacity=car.capacity;rescue.rescueTarget=car;rescue.state="recovery_outbound";
+  cars.push(rescue);responseRoute(rescue,node);
+  dbg("BREAKDOWN",car.id+" stalled beside road node "+node+" · "+car.riders.length+" passengers aboard");
+  dbg("RECOVERY",rescue.id+" immediately dispatched to "+car.id+" · original passenger destinations and boarding times preserved");
+  return rescue;
+}
+function arriveRecovery(car) {
+  const stalled=car.rescueTarget;
+  car.rescueTarget=null;
+  const riders=stalled.riders.splice(0);
+  car.riders=riders;
+  const drops=new Map();
+  for(const [i,r] of riders.entries()) {
+    if(!drops.has(r.dropoffId))drops.set(r.dropoffId,[]);drops.get(r.dropoffId).push(r);
+    const [x,y]=nodeXY(car.nodeId);
+    passengerTransfers.push({from:[x+10,y],to:[x,y],start:Date.now(),duration:300/speedMult,boarding:true,car});
+  }
+  car._boardingDepartureSeconds=9;
+  stalled.state="trouble_repair";stalled.repairUntil=simElapsed+5;
+  dbg("RECOVERY",car.id+" transferred "+riders.length+" passengers from "+stalled.id+" · continuing to "+drops.size+" destinations");
+  planRecoveryDrops(car);
+}
+function planRecoveryDrops(car) {
+  const drops=new Map();
+  for(const r of car.riders) {
+    if(!drops.has(r.dropoffId))drops.set(r.dropoffId,[]);
+    drops.get(r.dropoffId).push(r);
+  }
+  car._segments=[];
+  let cursor=car.nodeId;
+  for(const node of nearestOrder(cursor,[...drops.keys()])) {
+    const route=dijkstra(cursor,node);
+    // If an emergency closes the only access, retain the riders and retry.
+    if(!route) {car.state="recovery_wait";car.route=null;releaseAllClaims(car);return;}
+    car._segments.push({type:"dropoff",node,reqs:drops.get(node),route});cursor=node;
+  }
+  releaseAllClaims(car);for(const seg of car._segments)claimRoute(car,seg.route);
+  advanceSegment(car);
+}
+function tickEmergencyVehicles() {
+  for(const [key,block] of directionalBlocks)if(block.until<=simElapsed) {
+    directionalBlocks.delete(key);dbg("TRAFFIC","Emergency road direction reopened: "+key);
+  }
+  for(const car of cars) {
+    if(car.state==="emergency_scene" && simElapsed>=car.sceneUntil) {
+      if(!responseRoute(car,buildingByName("Police / Fire").accessId))continue;
+      if(car.incident.kind==="police" && !car.riders.length) {
+        const r={id:nextReqId++,human:{id:-1},from:car.incident.target,to:buildingByName("Police / Fire"),
+          pickupId:car.nodeId,dropoffId:buildingByName("Police / Fire").accessId,requestedAt:simElapsed};
+        boardPassenger(r);car.riders.push(r);animateTransfer(car,r,true);
+        dbg("EMERGENCY",car.id+" picked up one passenger at "+car.incident.target.name);
+      }
+      car.state="emergency_return";
+      dbg("EMERGENCY",car.id+" leaving scene for Police / Fire");
+    } else if(car.state==="trouble_repair" && simElapsed>=car.repairUntil) {
+      if(responseRoute(car,CENTRAL_NODE)) {car.state="returning";dbg("RECOVERY",car.id+" repaired · returning to depot");}
+    } else if(["emergency_outbound","emergency_return","recovery_outbound"].includes(car.state) && !car.route) {
+      responseRoute(car,car.rescueTarget?.nodeId ?? (car.state==="emergency_return"?buildingByName("Police / Fire").accessId:car.incident?.target.accessId));
+    } else if(car.state==="recovery_wait") {
+      planRecoveryDrops(car);
+    }
+  }
+  for(let i=cars.length-1;i>=0;i--)if(cars[i].state==="response_done" || (cars[i].kind==="recovery" && cars[i].state==="idle")) {
+    const car=cars[i];releaseAllClaims(car);
+    if(car===spectateCar)stopSpectate();if(car===featuredCar)featuredCar=null;if(car===cockpitCar)cockpitCar=null;
+    cars.splice(i,1);
+  }
+  for(let i=incidents.length-1;i>=0;i--)if(incidents[i].finished)incidents.splice(i,1);
+}
+function tickRareEvents() {
+  if(simElapsed>=nextPoliceAt) {triggerEmergency("police");nextPoliceAt=nextRareEvent(180);}
+  if(simElapsed>=nextFireAt) {triggerEmergency("fire");nextFireAt=nextRareEvent(600);}
+  if(simElapsed>=nextTroubleAt) {
+    const eligible=cars.filter(c=>["sedan","shuttle","bus"].includes(c.kind)&&!c.retiring&&c.riders.length&&c.route&&["enroute_pickup","enroute_dropoff"].includes(c.state));
+    if(eligible.length) {const car=pick(eligible);car._troublePending=true;dbg("BREAKDOWN",car.id+" detects vehicle trouble · pulling over at next road stop");}
+    nextTroubleAt=nextRareEvent(480);
+  }
+}
+function drawEmergencyScene() {
+  for(const incident of incidents) {
+    const [x,y]=buildingCenter(incident.target);
+    ctx.fillStyle=incident.kind==="fire"?"#fb923c":"#38bdf8";ctx.font="bold 13px sans-serif";ctx.textAlign="center";
+    ctx.fillText(incident.kind==="fire"?"FIRE":"POLICE",x,y-20);
+    if(incident.kind==="fire") {ctx.beginPath();ctx.moveTo(x-10,y);ctx.lineTo(x-4,y-18);ctx.lineTo(x,y-8);ctx.lineTo(x+8,y-25);ctx.lineTo(x+12,y);ctx.fill();}
+  }
+  for(const block of directionalBlocks.values()) {
+    const a=nodeXY(block.from),b=nodeXY(block.to),angle=Math.atan2(b[1]-a[1],b[0]-a[0]);
+    const x=(a[0]+b[0])/2-Math.sin(angle)*5,y=(a[1]+b[1])/2+Math.cos(angle)*5;
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle="#ef4444";ctx.fillRect(-8,-3,16,6);ctx.fillStyle="#fff";ctx.fillRect(-5,-1,10,2);ctx.restore();
+  }
 }
 
 // Opportunistic insertion keeps every existing stop, pickup-before-dropoff,
@@ -1279,7 +1449,21 @@ function assignMultiStop(car, reqs, tag) {
 function stepCars(speedMult, filterCar = null) {
   for (const car of cars) {
     if (filterCar && car !== filterCar) continue;
-    if (car.state === "idle") continue;
+    if (["idle","emergency_scene","vehicle_trouble","trouble_repair","response_done","recovery_wait"].includes(car.state)) continue;
+    if((car.incident || car.rescueTarget) && !car.route)continue;
+    if(car.route && car.routeIndex<car.route.edges.length) {
+      const from=car.route.nodes[car.routeIndex],to=car.route.nodes[car.routeIndex+1];
+      if(directionBlocked(from,to,car.incident?.id)) {
+        if(!car._emergencyBlocked)dbg("TRAFFIC",car.id+" waiting for blocked road direction "+from+":"+to);
+        car._emergencyBlocked=true;
+        if(car.progress===0) {
+          const alt=dijkstra(from,car.route.nodes.at(-1),null,car.incident?.id);
+          if(alt) {releaseRemaining(car);claimRoute(car,alt);setRoute(car,alt);dbg("REPLAN",car.id+" detouring around emergency closure");}
+        }
+        continue;
+      }
+      car._emergencyBlocked=false;
+    }
     if(car._boardingDepartureSeconds>0) {
       car._boardingDepartureSeconds=Math.max(0,car._boardingDepartureSeconds-SIM_MIN_PER_TICK*60*speedMult);
       if(car._boardingDepartureSeconds===0) {
@@ -1336,6 +1520,7 @@ function stepCars(speedMult, filterCar = null) {
     let fraction = car.progress;
     while (edgeIndex < car.route.edges.length) {
       const edge = edges[car.route.edges[edgeIndex]];
+      if(directionBlocked(car.route.nodes[edgeIndex],car.route.nodes[edgeIndex+1],car.incident?.id))break;
       const meters = edge.length * METERS_PER_CELL;
       const metersPerSecond = edge.speedKph / 3.6 * slowFactor;
       const availableSeconds = (1-fraction)*meters/metersPerSecond;
@@ -1375,6 +1560,8 @@ function stepCars(speedMult, filterCar = null) {
       edges[justTraversed].claims.delete(car.id);
       car.routeIndex++;
       if (car.routeIndex < car.route.nodes.length) car.nodeId = car.route.nodes[car.routeIndex];
+      if(car._troublePending && car.riders.length) {stallVehicle(car);break;}
+      if(car.routeIndex<car.route.edges.length && directionBlocked(car.route.nodes[car.routeIndex],car.route.nodes[car.routeIndex+1],car.incident?.id)) {car.progress=0;break;}
       if (checkObstacle(car)) break;
       if (car.routeIndex >= car.route.edges.length) {
         arriveAtRouteEnd(car);
@@ -1411,6 +1598,8 @@ function advanceSegment(car) {
 }
 
 function arriveAtRouteEnd(car) {
+  if(car.incident) {arriveEmergency(car);return;}
+  if(car.state==="recovery_outbound") {arriveRecovery(car);return;}
   // Reached the depot after repositioning — park (idle) at Central Stn.
   if (car.state === "returning") {
     if(car._activeSeg?.type === "depot") { finishTrip(car); return; }
@@ -1836,7 +2025,7 @@ function resolveObstacle(car) {
     }
     releaseRemaining(car);
     if (dst != null) {
-      const newRoute = dijkstra(car.nodeId, dst, car._banEdge);
+      const newRoute = dijkstra(car.nodeId, dst, car._banEdge, car.incident?.id);
       if (newRoute) {
         claimRoute(car, newRoute);
         setRoute(car, newRoute);
@@ -2139,7 +2328,7 @@ function render() {
     ctx.save();ctx.translate(view.tx,view.ty);ctx.scale(view.scale,view.scale);
     drawStreets();drawCongestion();drawBuildings();drawRail();
     if(mode==="interactive") drawInteractiveOverlay();
-    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();
+    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();drawEmergencyScene();
     if(view.id==="region") {
       ctx.font=`bold ${12/view.scale}px sans-serif`;ctx.textAlign="center";ctx.fillStyle="#e2e8f0";
       for(const d of developments) ctx.fillText(d.name,(d.bounds[0]+d.bounds[2])/2,d.bounds[1]-12/view.scale);
@@ -2391,10 +2580,15 @@ function drawCars() {
       ctx.globalAlpha = 1;
       continue;
     }
-    const x = car.pos.x, y = car.pos.y;
+    let x = car.pos.x, y = car.pos.y;
+    if(["vehicle_trouble","trouble_repair"].includes(car.state))x+=10;
+    if(car.state==="emergency_scene") {
+      const slot=car.incident.responders.indexOf(car);
+      x+=Math.cos(car.heading)*(slot*24);y+=Math.sin(car.heading)*(slot*24);
+    }
     const heading = (car.heading != null) ? car.heading : 0;
-    const longR = car.kind === "bus" ? 21 : car.kind === "sedan" ? 12 : 14;
-    const shortR = car.kind === "bus" ? 8 : car.kind === "sedan" ? 6 : 7;
+    const longR = ["bus","fire"].includes(car.kind) ? 21 : ["sedan","police","firecar"].includes(car.kind) ? 12 : 14;
+    const shortR = ["bus","fire"].includes(car.kind) ? 8 : ["sedan","police","firecar"].includes(car.kind) ? 6 : 7;
     // focal-car highlight + FPV view cone — follows whichever car the cockpit shows
     if (car === cockpitCar && car.heading != null) {
       const camHead = (car._displayHeading != null) ? car._displayHeading : heading;
@@ -3060,6 +3254,13 @@ function drawBuildingsFPV(cam) {
       strokePolyWorld(
         [[g1[0], g1[1], 0], [g2[0], g2[1], 0], [g2[0], g2[1], FPV_BLDG_HEIGHT], [g1[0], g1[1], FPV_BLDG_HEIGHT]],
         cam);
+      if(b.type==="emergency") {
+        const P=(t,h)=>[g1[0]+(g2[0]-g1[0])*t,g1[1]+(g2[1]-g1[1])*t,h];
+        fpvCtx.fillStyle="#34404e";
+        for(const left of [.1,.55])fillPolyWorld([P(left,0),P(left+.3,0),P(left+.3,26),P(left,26)],cam);
+        fpvCtx.fillStyle="#38bdf8";fillPolyWorld([P(.08,32),P(.44,32),P(.44,38),P(.08,38)],cam);
+        fpvCtx.fillStyle="#f43f5e";fillPolyWorld([P(.55,32),P(.92,32),P(.92,38),P(.55,38)],cam);
+      }
       if(b.apartments) {
         fpvCtx.fillStyle="#9ec7db";
         for(let floor=0;floor<5;floor++)for(let window=0;window<5;window++) {
@@ -3102,7 +3303,7 @@ function drawDynamicFPV(cam, focalCar) {
 function drawCarFPV(c, v, cam) {
   const ground = projectCam(v);
   const w = Math.min(400, 3000 / Math.max(v.fwd, 1));
-  const carH = w * (c.kind === "bus" ? 1.05 : 0.65);
+  const carH = w * (["bus","fire"].includes(c.kind) ? 1.05 : 0.65);
   const bodyTop = ground.y - carH;
   const bodyL = ground.x - w / 2;
   // shadow puddle
@@ -3328,14 +3529,17 @@ function drawFPVHUD(car) {
 // HUD
 // ============================================================
 function updateHUD() {
+  const activeEmergencies=incidents.length;
+  document.getElementById("emergency-status").textContent=activeEmergencies ?
+    incidents.map(i=>i.kind.toUpperCase()+" · "+i.target.name).join(" | ") : "No active emergencies.";
   document.getElementById("shared-pickups").textContent=sharedPickups;
   document.getElementById("clock").textContent = clockStr();
   let active = 0;
   let sedParked = 0, shuParked = 0, busParked = 0;   // idle and parked at the depot (not "out")
   for (const c of cars) {
-    if (c.state !== "idle" && c.state !== "returning") active++;
+    if (["sedan","shuttle","bus","recovery"].includes(c.kind) && !["idle","returning","trouble_repair"].includes(c.state)) active++;
     if (c.state === "idle" && c.nodeId === CENTRAL_NODE) {
-      if (c.kind === "sedan") sedParked++; else if(c.kind === "shuttle") shuParked++; else if(!c.retiring) busParked++;
+      if (c.kind === "sedan") sedParked++; else if(c.kind === "shuttle") shuParked++; else if(c.kind==="bus" && !c.retiring) busParked++;
     }
   }
   document.getElementById("active-rides").textContent = active;
@@ -3492,6 +3696,8 @@ function simulationStep() {
     advanceSimulationTime(SIM_MIN_PER_TICK);
     checkSchedules();
     tickEvents();
+    tickRareEvents();
+    tickEmergencyVehicles();
     shareQueuedRides();
     dispatch();
     returnIdleCars();
@@ -3530,12 +3736,21 @@ document.getElementById("speed").addEventListener("input", (e) => {
   speedMult = +e.target.value;
   document.getElementById("speed-val").textContent = speedMult + "×";
 });
+document.getElementById("trigger-emergency").addEventListener("click",()=>{
+  triggerEmergency();
+  if(mode!=="auto")setMode("auto");
+  paused=false;document.getElementById("pause").textContent="Pause";
+});
 document.getElementById("pause").addEventListener("click", () => {
   paused = !paused;
   document.getElementById("pause").textContent = paused ? "Resume" : "Pause";
 });
 document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
+  for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || cars[i].kind==="recovery")cars.splice(i,1);
+  featuredCar=null;cockpitCar=null;
+  incidents.length=0;directionalBlocks.clear();
+  nextPoliceAt=180*(.5+Math.random());nextFireAt=600*(.5+Math.random());nextTroubleAt=480*(.5+Math.random());
   simMinute = DAY_START;
   sharedPickups=0;
   passengerTransfers.length=0;
@@ -3567,6 +3782,7 @@ document.getElementById("reset").addEventListener("click", () => {
     c._activeSeg = null;
     c._boarding = null;
     c._boardingDepartureSeconds=0;
+    c._troublePending=false;c._emergencyBlocked=false;
     c._toDropoffRoute = null;
     c._slowedTicks = 0;
     c._obstacleKind = null;

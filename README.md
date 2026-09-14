@@ -99,3 +99,15 @@ Publish the repository's `main` branch, `/ (root)`, in Settings → Pages. `.noj
 ## Implementation
 
 All runtime code is in `index.html`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the source app's subsystems and adaptation details.
+
+## Emergencies and roadside recovery
+
+The central Police / Fire station has garage bays and blue/red panels in Driver POV. Its dedicated response vehicles do not reduce the adjustable transit fleet:
+
+- Blue police sedans respond roughly every 1.5–4.5 simulated hours, stop for five minutes, collect one passenger and return to the station.
+- Red fire shuttles and pink support sedans respond roughly every 5–15 simulated hours. Two trucks and two sedans stop for ten minutes and return.
+- **Trigger Emergency** immediately dispatches a random police (70%) or fire (30%) incident to a residence or business and resumes Auto mode.
+- Responders close their arrival direction while on scene. Transit vehicles detour when possible or wait; the opposite direction remains open. Overlapping incidents keep their own closure timers.
+- Roughly every 4–12 simulated hours an occupied public vehicle may develop trouble. It pulls aside at the next road node and a white recovery vehicle is dispatched immediately. Riders transfer, then continue to their individual destinations with their original pickup times preserved. The stalled vehicle returns to service after a five-minute repair following rescue.
+
+The debug stream logs dispatch, arrival, road reopening, police pickup, return, breakdown and passenger recovery. Reset day clears incidents, closures and recovery vehicles.
