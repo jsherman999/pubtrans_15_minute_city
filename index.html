@@ -60,16 +60,17 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
 #debug-log .cat-pickup .cat { color: #22c55e; }
 #debug-log .cat-dropoff .cat { color: #a78bfa; }
 #debug-log .cat-plan .cat { color: #fbbf24; }
-#debug-log .cat-obstacle .cat { color: #ef4444; }
+#debug-log .cat-obstacle .cat { color: #facc15; }
 #debug-log .cat-replan .cat { color: #ec4899; }
 #debug-log .cat-traffic .cat { color: #38bdf8; }
 #debug-log .cat-event .cat { color: #f59e0b; }
 #debug-log .cat-narration .cat { color: #e879f9; }
 #debug-log .cat-system .cat { color: #888; }
-#debug-log .cat-emergency .cat { color: #fb7185; }
+#debug-log .cat-emergency .cat { color: #ef4444; }
 #debug-log .cat-breakdown .cat { color: #fbbf24; }
 #debug-log .cat-recovery .cat { color: #e2e8f0; }
 #debug-log .msg { color: #ddd; word-break: break-word; }
+#debug-log .emergency-entry .cat, #debug-log .emergency-entry .msg { color: #ef4444; }
 #map { background: #1f2024; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: block; max-width: 100%; max-height: 100%; }
 #map.interactive { cursor: crosshair; }
 #fpv { display: none; }   /* offscreen FPV buffer; the visible view is the sidebar cockpit */
@@ -674,11 +675,12 @@ const DBG_STYLE =
   '.cat-pickup .cat { color: #22c55e; }' +
   '.cat-dropoff .cat { color: #a78bfa; }' +
   '.cat-plan .cat { color: #fbbf24; }' +
-  '.cat-obstacle .cat { color: #ef4444; }' +
+  '.cat-obstacle .cat { color: #facc15; }' +
   '.cat-replan .cat { color: #ec4899; }' +
   '.cat-narration .cat { color: #e879f9; }' +
   '.cat-system .cat { color: #888; }' +
-  '.msg { color: #ddd; word-break: break-word; }';
+  '.msg { color: #ddd; word-break: break-word; }' +
+  '.cat-emergency .cat, .emergency-entry .cat, .emergency-entry .msg { color: #ef4444; }';
 
 function openDebugWindow() {
   if (dbgWin && !dbgWin.closed) { dbgWin.focus(); return; }
@@ -704,6 +706,11 @@ function openDebugWindow() {
 function buildLogRow(doc, entry) {
   const row = doc.createElement("div");
   row.className = "log-row cat-" + entry.category.toLowerCase();
+  // Keep responders conspicuous even in TRAFFIC, OBSTACLE and REPLAN messages,
+  // including buffered entries replayed into the popout debug window.
+  if(entry.category.toUpperCase()==="EMERGENCY" || /\b(?:police|fire|firecar)(?:\s*#\d+|-\d+-\d+)\b/i.test(entry.msg)) {
+    row.className += " emergency-entry";
+  }
   const t = doc.createElement("span"); t.className = "t"; t.textContent = entry.t;
   const c = doc.createElement("span"); c.className = "cat"; c.textContent = entry.category;
   const m = doc.createElement("span"); m.className = "msg"; m.textContent = entry.msg;
