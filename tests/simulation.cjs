@@ -14,7 +14,7 @@ function boot() {
 for(let trial=0;trial<12;trial++) {
  const {run,elements}=boot();
  assert.equal(run('GRID_N-1'),6);
- assert.equal(run('developments.every(d=>d.homes.length===20 && d.gapMeters>=0 && d.gapMeters<=1609)'),true);
+ assert.equal(run('developments.every(d=>d.homes.length===24 && d.gapMeters>=0 && d.gapMeters<=1609)'),true);
  assert.equal(run('BUILDINGS.every(b=>dijkstra(CENTRAL_NODE,b.accessId) && dijkstra(b.accessId,CENTRAL_NODE))'),true);
  assert.equal(run('Object.values(edges).every(e=>Number.isFinite(e.length)&&e.length>0)'),true);
  run('render=()=>{};renderCockpit=()=>{};renderMetricsGraph=()=>{};dbg=()=>{};speedMult=20;');
@@ -36,7 +36,7 @@ for(let trial=0;trial<12;trial++) {
  run(`for(const d of developments){ const routes=kShortest(d.homes[0].accessId,d.homes[19].accessId);if(!routes.length)throw Error('local route missing'); }
  if(!kShortest(developments[0].homes[0].accessId,developments[3].homes[19].accessId).length)throw Error('regional route missing');`);
 }
-console.log('PASS: 12 randomized worlds, 80 suburban homes, directed connectivity, local/cross-region routes, capacity, road-only vehicle positions, completed rides, train events and reset.');
+console.log('PASS: 12 randomized worlds, 120 suburban homes, directed connectivity, local/cross-region routes, capacity, road-only vehicle positions, completed rides, train events and reset.');
 
 // Rendering must follow CSS size × DPR without changing logical coordinates,
 // reallocating unchanged buffers, or scaling a low-resolution cockpit image.
@@ -73,7 +73,7 @@ console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, n
 
 {
  const {run,elements}=boot();
- assert.equal(run('countCars("bus")'),4);
+ assert.equal(run('countCars("bus")'),5);
  assert.equal(run('developments.every((_,i)=>cars.filter(c=>c.kind==="bus"&&c.development===i&&c.capacity===20&&c.color===COLORS.bus).length===1)'),true);
  run(`
    humans.length=0; queue.length=0;
@@ -99,7 +99,7 @@ console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, n
    addCars('bus',1);
    if(cars.filter(c=>c.kind==='bus'&&c.development===0).length!==2) throw Error('extra bus not balanced');
    removeCars('bus',1);
-   if(countCars('bus')!==4) throw Error('bus control count wrong');
+   if(countCars('bus')!==5) throw Error('bus control count wrong');
    // Request retirement of the busy bus after removing other neighborhoods.
    for(const c of cars) if(c!==serviceBus)c.retiring=true;
    retireFinishedBuses();
@@ -109,17 +109,17 @@ console.log('PASS: Retina/phone/fractional DPR sizing, unchanged-buffer reuse, n
    for(let t=0;t<2000 && cars.includes(serviceBus);t++){stepCars(20);tickStoplights();retireFinishedBuses();}
    if(completedTrips.length!==21 || cars.includes(serviceBus)) throw Error('retirement lost rider or failed');
    if(Object.values(edges).some(e=>e.claims.has(serviceBus.id))) throw Error('retired bus left road claims');
-   addCars('bus',4);
+   addCars('bus',5);
    if(!developments.every((_,i)=>cars.filter(c=>c.kind==='bus'&&c.development===i).length===1)) throw Error('restored fleet must serve all neighborhoods');
  `);
  elements.get('sim-controls').click({target:{dataset:{act:'bus-inc'}}});
- assert.equal(run('countCars("bus")'),5);
+ assert.equal(run('countCars("bus")'),6);
  elements.get('sim-controls').click({target:{dataset:{act:'bus-dec'}}});
- assert.equal(run('countCars("bus")'),4);
+ assert.equal(run('countCars("bus")'),5);
  elements.get('reset').click();
  assert.equal(run('cars.filter(c=>c.kind==="bus").every(c=>c.capacity===20&&c.state==="idle")'),true);
 }
-console.log('PASS: four assigned buses, 20-rider pooling, inbound/outbound service, neighborhood restrictions, balanced fleet controls, safe retirement and reset.');
+console.log('PASS: five assigned buses, 20-rider pooling, inbound/outbound service, neighborhood restrictions, balanced fleet controls, safe retirement and reset.');
 
 {
  const {run}=boot();
@@ -190,3 +190,25 @@ console.log('PASS: baseline off, mid-edge continuity, outbound-to-return inserti
  `);
 }
 console.log('PASS: 500-person shared simulation, road continuity, capacity, exclusive request ownership and completed rides.');
+{
+ const {run}=boot();
+ assert.equal(run('developments.length'),5);
+ assert.equal(run('developments[4].gapMeters'),0);
+ assert.ok(run('nodeDist(developments[4].gate,developments[4].entry)')<=run('CELL'));
+ assert.equal(run('developments.every(d=>d.culDeSacs.length===4 && d.culDeSacs.every(n=>d.homes.filter(b=>b.accessId===n).length===2))'),true);
+ run(`
+   const bus=cars.find(c=>c.kind==='bus');
+   const from=developments[0].homes[0],to=buildingByName('Hillside');
+   const group=Array.from({length:5},()=>({id:nextReqId++,human:{id:-1},from,to,pickupId:from.accessId,dropoffId:to.accessId,requestedAt:simMinute}));
+   assignMultiStop(bus,group,'TRANSFER TEST');
+   for(let t=0;t<3000 && bus.state!=='idle';t++){stepCars(20,bus);tickStoplights();}
+   if(completedTrips.length!==5)throw Error('transfer trip not completed');
+   if(passengerTransfers.filter(e=>e.boarding).length!==5 || passengerTransfers.filter(e=>!e.boarding).length!==5)throw Error('expected exactly one animation per passenger in each direction');
+   for(const effect of passengerTransfers) {
+     if(!transferPosition(effect,effect.start+325) || transferPosition(effect,effect.start-1) || transferPosition(effect,effect.start+651))throw Error('transfer lifetime incorrect');
+   }
+   passengerTransfers.length=0;
+   for(const b of buildingsByType.residential) drawRanchFPV(b,{x:b.x||0,y:(b.y||0)-40,cos:1,sin:0});
+ `);
+}
+console.log('PASS: fifth connected neighborhood within one block, two homes at every cul-de-sac, ranch rendering and exact per-person transfer effects.');

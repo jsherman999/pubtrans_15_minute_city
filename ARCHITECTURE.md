@@ -17,13 +17,19 @@ The source is a single HTML document: CSS and controls, graph/building data, sch
 
 The original center indexing remains, now 7 intersections per side. Additional nodes use explicit coordinates in `extraNodes`. All roads, including curve samples, enter the same graph. Residential buildings have explicit centers, small footprints and nearby road access nodes, so drawing, picking, waiting badges, destinations and POV all agree.
 
-Four separate outward sectors with randomized offsets and gaps avoid overlapping development footprints. Quadratic curves are sampled into traversable segments; dead ends have turning circles. Distance-weighted routing and distance-based vehicle progress prevent short curve segments from artificially slowing cars. One-way streets remain inside the grid, avoiding disconnected suburban access roads.
+Four outward sectors retain randomized offsets and gaps. A fifth development fans outward from a fixed entrance connected to the southeast city corner, 60 m away. Each cul-de-sac has a second residence sharing its access node. Quadratic curves are sampled into traversable segments; dead ends have turning circles. Distance-weighted routing and distance-based vehicle progress prevent short curve segments from artificially slowing cars. One-way streets remain inside the grid, avoiding disconnected suburban access roads.
 
-Six independent view transforms share the same live state. Pointer coordinates are inverted through the selected view before picking a car or building. Only onscreen maps render each tick to limit phone workload. The sidebar cockpit remains based on world coordinates. Native document scrolling and sticky shortcuts replace the original viewport-locked layout.
+Seven independent view transforms share the same live state. Pointer coordinates are inverted through the selected view before picking a car or building. Only onscreen maps render each tick to limit phone workload. The sidebar cockpit remains based on world coordinates. Native document scrolling and sticky shortcuts replace the original viewport-locked layout.
 
 Canvas backing buffers follow CSS display dimensions multiplied by device pixel ratio, while map coordinates (780 × 780) and POV projection coordinates (640 × 640) stay fixed. Each visible frame checks sizing, so window resizing, browser zoom and monitor density changes redraw at native resolution. The POV buffer matches the cockpit pixel-for-pixel; metrics use the same sizing helper. Unchanged buffers are reused.
 
 Rail is a visual layer, separate from the drivable graph. Passenger-count markers interpolate along it during the ten simulated minutes before each train event; the existing event scheduler injects passengers at arrival. Reset now clears event fired flags and the active banner as well as trips.
+
+## Residential rendering and transfers
+
+`drawRanchFPV` replaces residential block extrusions with low walls, doors, windows, a stoop and gable/hip roof polygons. Styles are derived deterministically from the building name; house fronts face their road access node. Commercial rendering is unchanged.
+
+`animateTransfer` is called at actual boarding and dropoff transitions, once per request. It snapshots the building center and vehicle stop position. Each effect interpolates for 650 ms of wall-clock time, with a 65 ms stagger for group alighting, and renders as a stick figure in the maps and POV. Completed effects are pruned every tick, including while paused. Reset clears all effects. The animations never modify simulation state or count as traffic obstacles.
 
 ## Dedicated neighborhood buses
 

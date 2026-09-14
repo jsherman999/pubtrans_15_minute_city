@@ -145,8 +145,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 </style>
 </head>
 <body>
-<div class="page-title"><h1>PubTrans / 15 minute city</h1><p>One walkable center. Four neighborhoods. One shared autonomous fleet.</p></div>
-<nav class="map-nav" aria-label="Map shortcuts"><a href="#region-card">Whole region</a><a href="#center-card">City center</a><a href="#district-0">Willow</a><a href="#district-1">Cedar</a><a href="#district-2">Meadow</a><a href="#district-3">Oak</a><a href="#controls">Controls / POV</a></nav>
+<div class="page-title"><h1>PubTrans / 15 minute city</h1><p>One walkable center. Five neighborhoods. One shared autonomous fleet.</p></div>
+<nav class="map-nav" aria-label="Map shortcuts"><a href="#region-card">Whole region</a><a href="#center-card">City center</a><a href="#district-0">Willow</a><a href="#district-1">Cedar</a><a href="#district-2">Meadow</a><a href="#district-3">Oak</a><a href="#district-4">Juniper</a><a href="#controls">Controls / POV</a></nav>
 <div class="app">
   <div class="main-col">
     <div class="grid-col">
@@ -161,6 +161,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#f97316"></span>Shuttle (cap 8)</div>
       <div class="leg"><span class="sw" style="background:#a78bfa"></span>Large bus (cap 20)</div>
       <div class="leg"><span class="sw" style="background:#ef4444"></span>Obstacle</div>
+      <div class="leg"><span class="sw" style="background:#fef08a"></span>Person boarding</div>
+      <div class="leg"><span class="sw" style="background:#86efac"></span>Person alighting</div>
     </div>
     </div><!-- /grid-col -->
     <div class="side-dock">
@@ -192,7 +194,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
   </div>
   <aside class="sidebar" id="controls">
     <h1>PubTrans</h1>
-    <p class="sub">15 minute city · four connected neighborhoods</p>
+    <p class="sub">15 minute city · five connected neighborhoods</p>
 
     <div class="mode-toggle">
       <button id="mode-auto" class="active">Auto</button>
@@ -248,7 +250,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <div class="stepper-btns"><button data-act="shu-dec">−</button><span id="ctl-shu">14</span><span class="active-count" id="ctl-shu-active" title="currently active (out of the depot)">0</span><button data-act="shu-inc">+</button></div>
       </div>
       <div class="stepper"><span>Large buses (cap 20)</span>
-        <div class="stepper-btns"><button data-act="bus-dec" aria-label="Remove large bus">−</button><span id="ctl-bus">4</span><span class="active-count" id="ctl-bus-active" title="currently active (out of the depot)">0</span><button data-act="bus-inc" aria-label="Add large bus">+</button></div>
+        <div class="stepper-btns"><button data-act="bus-dec" aria-label="Remove large bus">−</button><span id="ctl-bus">5</span><span class="active-count" id="ctl-bus-active" title="currently active (out of the depot)">0</span><button data-act="bus-inc" aria-label="Add large bus">+</button></div>
       </div>
       <p class="hint small" id="bus-assignments"></p>
       <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="0"><span id="ride-sharing-value">0%</span></div>
@@ -391,22 +393,24 @@ function roadPath(a, points) {
   for (const point of points) { const n = roadNode(...point); addEdge(previous,n); previous=n; }
   return previous;
 }
-for (let side=0; side<4; side++) {
-  const name = ["Willow Park", "Cedar Grove", "Meadow Bend", "Oak Hollow"][side];
-  const gapMeters = Math.random() < .2 ? 0 : Math.round(Math.random()*1609);
-  const offset = (Math.random()-.5)*CELL*2;
+for (let side=0; side<5; side++) {
+  const name = ["Willow Park", "Cedar Grove", "Meadow Bend", "Oak Hollow", "Juniper Commons"][side];
+  const gapMeters = side===4 ? 0 : Math.random() < .2 ? 0 : Math.round(Math.random()*1609);
+  const offset = side===4 ? 0 : (Math.random()-.5)*CELL*2;
   const mid = PADDING+3*CELL;
   // Local u follows the city edge, v points outward. Separate sectors prevent overlap.
-  const transform = (u,v) => side===0 ? [mid+u,PADDING-v] : side===1 ?
+  const transform = (u,v) => side===4 ?
+    [PADDING+6*CELL+v/Math.sqrt(2)+Math.max(0,u)*1.25,
+     PADDING+6*CELL+v/Math.sqrt(2)+Math.max(0,-u)*1.25] : side===0 ? [mid+u,PADDING-v] : side===1 ?
     [PADDING+6*CELL+v,mid+u] : side===2 ? [mid+u,PADDING+6*CELL+v] : [PADDING-v,mid+u];
-  const gate = [nodeId(3,0),nodeId(6,3),nodeId(3,6),nodeId(0,3)][side];
+  const gate = [nodeId(3,0),nodeId(6,3),nodeId(3,6),nodeId(0,3),nodeId(6,6)][side];
   const gap = gapMeters/METERS_PER_CELL*CELL;
   const originV = gap+CELL*.6;
   const steps=Math.max(1,Math.ceil((gap+CELL*.6)/CELL));
   const entry = roadPath(gate, Array.from({length:steps},(_,i)=>
     transform(offset*(i+1)/steps,originV*(i+1)/steps)));
   const local = (u,v) => transform(offset+u,originV+v);
-  const dev = { name, gapMeters, homes:[], points:[nodeXY(entry)] };
+  const dev = { name, gapMeters, gate, entry, culDeSacs:[], homes:[], points:[nodeXY(entry)] };
   // Two winding boulevards, each with two short cul-de-sacs and five homes.
   for (const sign of [-1,1]) {
     let prev=entry;
@@ -422,9 +426,14 @@ for (let side=0; side<4; side++) {
       if (j===2 || j===4) {
         const end=roadPath(n,[local(u+sign*CELL*.16,v+CELL*.65),local(u-sign*CELL*.08,v+CELL*1.12)]);
         dev.points.push(nodeXY(end));
+        dev.culDeSacs.push(end);
         // Homes on this stretch are served at the cul-de-sac, with visible driveways.
         const b=dev.homes[dev.homes.length-1];
         [b.x,b.y]=local(u+sign*CELL*.25,v+CELL*1.28); b.accessId=end;
+        const [hx,hy]=local(u-sign*CELL*.48,v+CELL*1.28);
+        const extra={x:hx,y:hy,size:24,accessId:end,type:"residential",color:COLORS.residential,
+          name:name+" "+(dev.homes.length+1),development:side};
+        BUILDINGS.push(extra);buildingsByType.residential.push(extra);dev.homes.push(extra);
       }
     }
   }
@@ -781,7 +790,7 @@ let cockpitCar = null;              // car the sidebar cockpit is currently show
 let cockpitFeatured = false;        // true when cockpitCar is auto-featured (not user-selected)
 let sedanSeq = N_SEDANS;            // id sequences so live-added cars stay unique
 let shuttleSeq = N_SHUTTLES;
-let busSeq = 4;
+let busSeq = developments.length;
 let humanSeq = POPULATION;
 
 function makeCar(kind, id, development = null) {
@@ -896,6 +905,42 @@ function nearestOrder(start, ids) {
 let rideSharing = 0;
 let sharingCursor = 0;
 let sharedPickups = 0;
+const passengerTransfers=[];
+function animateTransfer(car,request,boarding,index=0) {
+  const building=boarding ? request.from : request.to;
+  if(!building) return;
+  const home=buildingCenter(building),road=nodeXY(car.nodeId);
+  passengerTransfers.push({from:boarding?home:road,to:boarding?road:home,
+    start:Date.now()+index*65,duration:650,boarding});
+}
+function transferPosition(effect,now=Date.now()) {
+  const t=(now-effect.start)/effect.duration;
+  if(t<0 || t>1) return null;
+  return [effect.from[0]+(effect.to[0]-effect.from[0])*t,
+    effect.from[1]+(effect.to[1]-effect.from[1])*t,t];
+}
+function drawTransfers() {
+  for(const effect of passengerTransfers) {
+    const p=transferPosition(effect);if(!p)continue;
+    const [x,y,t]=p,h=Math.max(9,4/viewScale);
+    ctx.strokeStyle=effect.boarding?"#fef08a":"#86efac";ctx.fillStyle=ctx.strokeStyle;
+    ctx.lineWidth=Math.max(1.8,1/viewScale);ctx.beginPath();ctx.arc(x,y-h,1.7,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x,y-h+2);ctx.lineTo(x,y-3);
+    ctx.moveTo(x-3,y-h+5);ctx.lineTo(x+3,y-h+5);
+    const swing=Math.sin(t*Math.PI*8)*2;
+    ctx.moveTo(x,y-3);ctx.lineTo(x-2-swing,y);ctx.moveTo(x,y-3);ctx.lineTo(x+2+swing,y);ctx.stroke();
+  }
+}
+function drawTransfersFPV(cam) {
+  for(const effect of passengerTransfers) {
+    const p=transferPosition(effect);if(!p)continue;
+    const v=toCamSpace(p[0],p[1],0,cam);if(v.fwd<FPV_NEAR || v.fwd>FPV_FAR)continue;
+    fpvCtx.strokeStyle=effect.boarding?"#fef08a":"#86efac";fpvCtx.lineWidth=2;
+    const line=(a,b)=>drawLineWorld(cam,[p[0]+a[0],p[1]+a[1],a[2]],[p[0]+b[0],p[1]+b[1],b[2]]);
+    line([0,0,1],[0,0,9]);line([-2,0,6],[2,0,6]);line([0,0,3],[-2,0,0]);line([0,0,3],[2,0,0]);
+    line([-1,0,10],[1,0,10]);
+  }
+}
 function routeDistance(route) { return route.edges.reduce((sum,k)=>sum+edges[k].length,0); }
 function sharingStops(car) {
   if(car.state === "idle" || car.state === "returning") return [{type:"depot",node:CENTRAL_NODE,reqs:[]}];
@@ -1199,6 +1244,7 @@ function stepCars(speedMult, filterCar = null) {
     if (car.state === "boarding_wait") {
       if (car._boarding && car._boarding.length > 0) {
         const r = car._boarding.shift();              // one passenger boards this tick
+        animateTransfer(car,r,true);
         car.riders.push(r);
         const qi = car.pickupQueue.indexOf(r);
         if (qi >= 0) car.pickupQueue.splice(qi, 1);   // amber waiting count drops by one
@@ -1315,7 +1361,8 @@ function arriveAtRouteEnd(car) {
       return;
     }
     // dropoff: alight the riders bound for this node
-    for (const r of seg.reqs) {
+    for (const [transferIndex,r] of seg.reqs.entries()) {
+      animateTransfer(car,r,false,transferIndex);
       const ri = car.riders.indexOf(r);
       if (ri >= 0) car.riders.splice(ri, 1);
       completedTrips.push({ tripMin: simMinute - r.requestedAt });
@@ -1331,6 +1378,7 @@ function arriveAtRouteEnd(car) {
   // Sedan flow
   if (car.state === "enroute_pickup") {
     car.riders = car.pickupQueue.slice();
+    car.riders.forEach((r,i)=>animateTransfer(car,r,true,i));
     const first = car.pickupQueue[0];
     if (first) {
       dbg("PICKUP", car.id + " picked up r#" + first.id + " at " + first.from.name);
@@ -1359,7 +1407,8 @@ function finishTrip(car) {
       (car.riders.length === 1 ? "" : "s") + " at " + destName +
       " · avg trip " + avgWait.toFixed(1) + " sim-min");
   }
-  for (const r of car.riders) {
+  for (const [i,r] of car.riders.entries()) {
+    animateTransfer(car,r,false,i);
     completedTrips.push({ tripMin: simMinute - r.requestedAt });
   }
   if (completedTrips.length > 1000) completedTrips.splice(0, completedTrips.length - 1000);
@@ -1608,7 +1657,8 @@ document.getElementById("ix-drive").addEventListener("click", () => {
   car.pickupQueue = [];
   car._segments = null;
   car._activeSeg = null;
-  car.riders = [{ human: { id: -1 }, requestedAt: simMinute, dropoffId: ix.dest.accessId }];
+  car.riders = [{ human: { id: -1 }, from:ix.source,to:ix.dest,requestedAt: simMinute, dropoffId: ix.dest.accessId }];
+  animateTransfer(car,car.riders[0],true);
   // initial heading so FPV doesn't open looking the wrong way
   if (route.nodes.length >= 2) {
     const [bx2, by2] = nodeXY(route.nodes[1]);
@@ -2024,7 +2074,7 @@ function render() {
     ctx.save();ctx.translate(view.tx,view.ty);ctx.scale(view.scale,view.scale);
     drawStreets();drawCongestion();drawBuildings();drawRail();
     if(mode==="interactive") drawInteractiveOverlay();
-    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();
+    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();
     if(view.id==="region") {
       ctx.font=`bold ${12/view.scale}px sans-serif`;ctx.textAlign="center";ctx.fillStyle="#e2e8f0";
       for(const d of developments) ctx.fillText(d.name,(d.bounds[0]+d.bounds[2])/2,d.bounds[1]-12/view.scale);
@@ -2559,6 +2609,7 @@ function renderFPV(focalCar = getFocalCar()) {
   drawBuildingsFPV(cam);
   drawTrafficControlsFPV(cam);
   drawDynamicFPV(cam, focalCar);
+  drawTransfersFPV(cam);
   drawWaitingFPV(cam);
   drawFPVHUD(focalCar);
   drawEventBanner(fpvCtx, FPV_W, FPV_H);
@@ -2676,7 +2727,7 @@ function drawWaitingFPV(cam) {
     const v = toCamSpace(wx, wy, 0, cam);             // ground at building center
     if (v.fwd < FPV_NEAR || v.fwd > FPV_FAR * 1.4) continue;
     if (Math.abs(v.right) / v.fwd > 1.7) continue;
-    const ve = toCamSpace(wx, wy, FPV_BLDG_HEIGHT * 0.55, cam); // anchor on the building face
+    const ve = toCamSpace(wx, wy, (b.type==="residential" ? 18 : FPV_BLDG_HEIGHT * 0.55), cam); // anchor on the building face
     markers.push({ depth: v.fwd, anchor: projectCam(ve), count });
   }
   markers.sort((p, q) => q.depth - p.depth);          // far to near
@@ -2866,6 +2917,40 @@ function drawRoadsFPV(cam) {
   }
 }
 
+function drawRanchFPV(b,cam) {
+  const [cx,cy]=buildingCenter(b),[ax,ay]=nodeXY(b.accessId);
+  const angle=Math.atan2(ay-cy,ax-cx)+Math.PI/2,c=Math.cos(angle),sn=Math.sin(angle);
+  const variant=[...b.name].reduce((sum,ch)=>sum+ch.charCodeAt(0),0)%4;
+  const width=Math.min(b.size || 42,42)*(variant===1?1.12:1),depth=width*(variant===2?.68:.56);
+  const wall=variant===3?9:11,ridge=wall+(variant===2?4:6);
+  const P=(x,y,z)=>[cx+x*c-y*sn,cy+x*sn+y*c,z];
+  const poly=(points,color)=>{fpvCtx.fillStyle=color;fillPolyWorld(points.map(p=>P(...p)),cam);};
+  const walls=["#ddcbb5","#b6c5cc","#bdbb98","#c68d73"],roofs=["#67584c","#475766","#6b7160","#6b4c45"];
+  const w=width/2,d=depth/2;
+  const corners=[[-w,-d],[w,-d],[w,d],[-w,d]];
+  for(let i=0;i<4;i++) {
+    const a=corners[i],b2=corners[(i+1)%4],mid=P((a[0]+b2[0])/2,(a[1]+b2[1])/2,0);
+    if((mid[0]-cx)*(mid[0]-cam.x)+(mid[1]-cy)*(mid[1]-cam.y)>=0)continue;
+    poly([[...a,0],[...b2,0],[...b2,wall],[...a,wall]],applyShade(walls[variant],i%2?.8:1));
+    // A door and broad low windows distinguish houses from commercial blocks.
+    const at=(t,z)=>[a[0]+(b2[0]-a[0])*t,a[1]+(b2[1]-a[1])*t,z];
+    for(const [left,right] of [[.12,.32],[.65,.88]]) poly([at(left,4),at(right,4),at(right,8),at(left,8)],"#759aa9");
+    poly([at(.43,0),at(.56,0),at(.56,7),at(.43,7)],"#554c43");
+  }
+  if(variant===2) {
+    // Low hipped roof.
+    poly([[-w-1,-d-1,wall],[w+1,-d-1,wall],[w*.65,0,ridge],[-w*.65,0,ridge]],roofs[variant]);
+    poly([[-w-1,d+1,wall],[w+1,d+1,wall],[w*.65,0,ridge],[-w*.65,0,ridge]],applyShade(roofs[variant],.8));
+    for(const side of [-1,1])poly([[side*(w+1),-d-1,wall],[side*(w+1),d+1,wall],[side*w*.65,0,ridge]],roofs[variant]);
+  } else {
+    for(const side of [-1,1])poly([[side*w,-d,wall],[side*w,d,wall],[side*w,0,ridge]],walls[variant]);
+    poly([[-w-1,-d-1,wall],[w+1,-d-1,wall],[w+1,0,ridge],[-w-1,0,ridge]],roofs[variant]);
+    poly([[-w-1,d+1,wall],[w+1,d+1,wall],[w+1,0,ridge],[-w-1,0,ridge]],applyShade(roofs[variant],.8));
+  }
+  // Front stoop at ground level.
+  poly([[-3,-d,0],[3,-d,0],[3,-d-3,0],[-3,-d-3,0]],"#b4afa3");
+}
+
 function drawBuildingsFPV(cam) {
   const items = [];
   // Inset the building face inside the block so it does not overlap the
@@ -2883,6 +2968,7 @@ function drawBuildingsFPV(cam) {
   items.sort((a, b) => b.dist - a.dist);
   for (const item of items) {
     const { b, bx, by, bSize, cx, cy } = item;
+    if(b.type==="residential") {drawRanchFPV(b,cam);continue;}
     const groundCorners = [
       [bx, by], [bx + bSize, by], [bx + bSize, by + bSize], [bx, by + bSize],
     ];
@@ -3339,6 +3425,7 @@ function tick() {
     stepCars(speedMult, ix.drivingCar);
     updateObstacles();
   }
+  for(let i=passengerTransfers.length-1;i>=0;i--) if(Date.now()>passengerTransfers[i].start+passengerTransfers[i].duration) passengerTransfers.splice(i,1);
   retireFinishedBuses();
   updateBusDisplay();
   waitingByBldg = computeWaiting();
@@ -3364,6 +3451,7 @@ document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
   simMinute = DAY_START;
   sharedPickups=0;
+  passengerTransfers.length=0;
   for(const evt of eventSchedule) evt.fired=false;
   currentEvent=null;
   queue.length = 0;
@@ -3552,7 +3640,7 @@ function addMap(id,title,description,bounds,existing) {
 addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. The rail continues north to other metros; numbered arrivals reach Central Station at scheduled times.",worldBounds);
 addMap("center","15 minute city center","6 × 6 blocks · 600 × 600 m · jobs, schools, groceries and Central Station. Tap buildings in Interactive mode to plan a trip across any map.",[0,0,780,780],canvas);
 for(const [i,d] of developments.entries()) addMap("district-"+i,d.name,
- `20 residences · ${d.gapMeters===0?"directly connected":(d.gapMeters/1609).toFixed(2)+" mi from the city edge"} · winding boulevards and four cul-de-sacs.`,d.bounds);
+ `${d.homes.length} residences · ${d.gapMeters===0?"directly connected":(d.gapMeters/1609).toFixed(2)+" mi from the city edge"} · winding boulevards and four cul-de-sacs.`,d.bounds);
 render();
 // Host-load readout: note the device's core count; hide the JS-heap row where
 // the browser doesn't expose it (e.g. Safari / iPhone).
