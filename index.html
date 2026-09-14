@@ -155,6 +155,9 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 .stepper-btns button:last-child {grid-column:4;}
 #human-traffic-value {width:36px;flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;}
 #gridlock-breakdown {margin-top:10px;}
+.pressure-overall {padding-bottom:6px;margin-top:12px!important;}
+.pressure-overall .pressure-track {height:10px;}
+#pressure-overall-bar {background:#93c5fd;}
 .pressure-row {display:grid;grid-template-columns:1fr auto;gap:4px;font-size:11px;margin:8px 0;}
 .pressure-row > span:last-of-type {font-variant-numeric:tabular-nums;}
 .pressure-track {grid-column:1 / -1;height:6px;background:#292c33;border-radius:3px;overflow:hidden;}
@@ -189,7 +192,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <p>Vehicles follow road speeds, one-way restrictions, stop signs and lights, and leave space behind traffic ahead. Jaywalkers cause braking; parked trucks can prompt a detour. Lime-green cars marked <strong>H</strong> are persistent human-driven traffic: they travel to a destination, occupy their lane and can hold up the fleet. Their slider starts at the old baseline of about five arrivals per simulated hour; increasing it adds traffic rather than transit passengers.</p>
     <p>Rare police and fire incidents dispatch blue police sedans or red/pink fire crews. They block their arrival direction for five or ten simulated minutes. <strong>Trigger Emergency</strong> starts an incident immediately. Occupied transit vehicles can also break down; a white recovery vehicle transfers their passengers and continues their trips. The debug stream records these decisions and events, with emergency messages in red.</p>
     <h3>What “Gridlock” means here</h3>
-    <p>The score is a congestion-pressure indicator, not the percentage of traffic stopped. It counts vehicle reservations on planned road segments plus obstructed segments, divided by the number of road segments. Longer routes and more vehicles can raise it. The chart separates public fleet, human-driven traffic, emergency/recovery vehicles and road obstructions; its bars show each factor’s share. Read it alongside ride times, queue times and the count of vehicles delayed behind traffic.</p>
+    <p>The score is a congestion-pressure indicator, not the percentage of traffic stopped. It counts vehicle reservations on planned road segments plus obstructed segments, divided by the number of road segments. Longer routes and more vehicles can raise it. The overall bar compares the current score with the highest reached since Reset day. The chart below separates public fleet, human-driven traffic, emergency/recovery vehicles and road obstructions; its bars show each factor’s share. Read it alongside ride times, queue times and the count of vehicles delayed behind traffic.</p>
     <h3>How routes are chosen</h3>
     <p><strong>Dijkstra’s algorithm</strong> finds the lowest-cost path through a network of road nodes and segments. Here, cost combines road distance with a penalty for routes already reserved by other vehicles. One-way restrictions and emergency closures rule out unavailable directions. Dispatch chooses whom to carry and the stop order; Dijkstra finds paths between those stops. It does not predict every future delay.</p>
     <p class="guide-note">This is an illustrative simulation, not a calibrated traffic forecast. It models scheduled demand, shared rides and road disruptions with simplified driving and congestion rules. Opening this guide leaves the simulation running unless you have paused it.</p>
@@ -286,6 +289,11 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="row"><span title="Mean boarding-to-dropoff time per completed passenger since Reset day; excludes queue time">Avg ride (min)</span><span id="avg-trip">—</span></div>
       <div class="row"><span title="Running mean request-to-boarding wait across boarded riders and everyone still awaiting pickup since Reset day">Avg queue (min)</span><span id="avg-queue">—</span></div>
       <div class="row"><span title="Congestion pressure: vehicle route reservations plus obstructed road segments, divided by road segments">Gridlock</span><span id="gridlock">0.00</span></div>
+      <div class="pressure-row pressure-overall">
+        <span>Overall gridlock</span><span id="pressure-overall-value">Current 0.000 · Max 0.000</span>
+        <div class="pressure-track" id="pressure-overall-meter" role="meter" aria-label="Current gridlock relative to maximum since Reset day" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><div id="pressure-overall-bar"></div></div>
+      </div>
+      <p class="hint small">Overall bar: current score relative to the highest reached since Reset day. Factor bars below: shares of the current score.</p>
       <div id="gridlock-breakdown" aria-label="Gridlock contribution breakdown">
         <div class="pressure-row"><span>Public fleet</span><span id="pressure-fleet-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-fleet-bar" style="background:#14b8a6"></div></div></div>
         <div class="pressure-row"><span>Human-driven</span><span id="pressure-human-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-human-bar" style="background:#a3e635"></div></div></div>
@@ -688,6 +696,7 @@ function kShortest(srcId, dstId, k = K_PATHS) {
 // ============================================================
 // Time
 // ============================================================
+let gridlockPeak = 0;         // highest score observed since Reset day
 let simElapsed = 0;             // monotonic minutes since Reset day
 let simMinute = DAY_START;       // start 07:30
 let paused = false;
@@ -3700,6 +3709,13 @@ function updateHUD() {
   document.getElementById("avg-trip").textContent = completedCount ?
     (completedRideMinutes/completedCount).toFixed(1) : "—";
   const pressure=gridlockBreakdown(),gridlock=pressure.total;
+  gridlockPeak=Math.max(gridlockPeak,gridlock);
+  document.getElementById("pressure-overall-value").textContent="Current "+gridlock.toFixed(3)+" · Max "+gridlockPeak.toFixed(3);
+  document.getElementById("pressure-overall-bar").style.width=(gridlockPeak?100*gridlock/gridlockPeak:0)+"%";
+  const overallMeter=document.getElementById("pressure-overall-meter");
+  overallMeter.setAttribute("aria-valuemax",String(gridlockPeak || 1));
+  overallMeter.setAttribute("aria-valuenow",String(gridlock));
+  overallMeter.setAttribute("aria-valuetext","Current "+gridlock.toFixed(3)+", maximum "+gridlockPeak.toFixed(3)+" since Reset day");
   for(const [key,value] of Object.entries(pressure.values)) {
     const share=gridlock?value/gridlock*100:0;
     document.getElementById("pressure-"+key+"-value").textContent=value.toFixed(3)+" · "+Math.round(share)+"%";
@@ -3865,6 +3881,8 @@ function simulationStep() {
     updateObstacles();
   }
   retireFinishedBuses();
+  // Record every simulation step, including peaks between fast-playback frames.
+  gridlockPeak=Math.max(gridlockPeak,gridlockBreakdown().total);
 }
 function tick() {
   const __t0 = performance.now();
@@ -3916,6 +3934,7 @@ document.getElementById("reset").addEventListener("click", () => {
   completedRideMinutes = 0;
   boardedQueueMinutes = 0;
   boardedQueueCount = 0;
+  gridlockPeak = 0;
   simElapsed = 0;
   pooledCount = 0;
   metricsHist.length = 0;
