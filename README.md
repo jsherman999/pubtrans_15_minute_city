@@ -30,6 +30,8 @@ Optional Anthropic narration still uses the source app's direct browser API call
 
 **Avg ride (min)** is the mean of each completed passenger's own boarding-to-dropoff duration across all completions since Reset day. It excludes time waiting for pickup and vehicle activity before boarding or after dropoff. Time spent aboard during other pickups, stops or detours remains part of that person's ride. A monotonic simulation clock keeps durations valid across daily schedule rollover, and interactive driving advances the same clock. Reset day clears the count and average.
 
+**Avg queue (min)** is a separate running mean across riders who have boarded and riders still awaiting pickup since Reset day. Boarded riders contribute their final request-to-boarding wait; unassigned and assigned-but-not-boarded riders contribute their wait so far. Each request counts once, and reassigning a rider after vehicle removal preserves the original request time. Reset day clears this metric as well. Canceled requests from removed population members no longer contribute while unserved.
+
 ## City apartments and defaults
 
 Riverbend school has been replaced by **Riverbend Apts**, a 100-apartment residential building. Home assignment and residential event destinations are weighted by housing units, so the building contributes 100 potential homes. Its residents count toward the selected population, rather than adding 100 people on top. Hillside is the remaining school; Riverbend school events have been removed. The apartment building has a distinct map color and a taller, windowed POV appearance.

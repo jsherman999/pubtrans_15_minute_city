@@ -266,3 +266,29 @@ console.log('PASS: startup defaults and residential apartment/school event confi
  assert.equal(elements.get('completed-rides').textContent,0);
 }
 console.log('PASS: distinct passenger boarding times, excluded queue time, 1000+ completions, bounded history, day rollover and clean metrics reset.');
+{
+ const {run,elements}=boot();
+ assert.equal(run('averageQueueMinutes()'),null);
+ run(`
+   const unassigned={requestedAt:0},assigned={requestedAt:10},boarded={requestedAt:0};
+   simElapsed=20;boardPassenger(boarded); // fixed 20-minute wait
+   queue.push(unassigned);cars[0].pickupQueue=[assigned];
+   cars[1].pickupQueue=[assigned,boarded]; // duplicate reference must not inflate count
+   simElapsed=40;updateHUD();
+   if(averageQueueMinutes()!==30)throw Error('expected (20 + 40 + 30) / 3');
+   simElapsed=50;boardPassenger(assigned);updateHUD();
+   if(averageQueueMinutes()!==110/3)throw Error('boarding must freeze assigned wait at 40');
+   boardPassenger(assigned);
+   if(boardedQueueCount!==2)throw Error('boarding counted twice');
+   simElapsed=60;
+   if(averageQueueMinutes()!==40)throw Error('only unboarded rider should continue accumulating');
+   const request={requestedAt:7};cars[2].pickupQueue=[request];cars[2].state='enroute_pickup';
+   // Fleet removal must preserve the original request timestamp.
+   cars[2].kind='shuttle';cars.splice(3);removeCars('shuttle',1);
+   if(request.requestedAt!==7)throw Error('requeue erased waiting time');
+ `);
+ elements.get('reset').click();run('updateHUD()');
+ assert.equal(run('averageQueueMinutes()'),null);
+ assert.equal(elements.get('avg-queue').textContent,'—');
+}
+console.log('PASS: running queue average includes assigned/unassigned riders, freezes at boarding, deduplicates, preserves request age and resets.');

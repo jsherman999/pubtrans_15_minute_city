@@ -235,6 +235,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="row"><span>Completed</span><span id="completed-rides">0</span></div>
       <div class="row"><span>Pooled riders</span><span id="pooled-rides">0</span></div>
       <div class="row"><span title="Mean boarding-to-dropoff time per completed passenger since Reset day; excludes queue time">Avg ride (min)</span><span id="avg-trip">—</span></div>
+      <div class="row"><span title="Running mean request-to-boarding wait across boarded riders and everyone still awaiting pickup since Reset day">Avg queue (min)</span><span id="avg-queue">—</span></div>
       <div class="row"><span>Gridlock</span><span id="gridlock">0.00</span></div>
       <div class="row"><span>Sim load</span><span id="perf-cpu">—</span></div>
       <div class="row" id="perf-mem-row"><span>JS heap</span><span id="perf-mem">—</span></div>
@@ -804,7 +805,28 @@ const cars = [];
 const completedTrips = [];      // bounded diagnostic history, not the total
 let completedCount = 0;
 let completedRideMinutes = 0;
-function boardPassenger(request) { request.pickedUpAt = simElapsed; }
+let boardedQueueMinutes = 0;
+let boardedQueueCount = 0;
+function boardPassenger(request) {
+  request.pickedUpAt = simElapsed;
+  if(!request._queueRecorded) {
+    boardedQueueMinutes += Math.max(0,simElapsed-request.requestedAt);
+    boardedQueueCount++;
+    request._queueRecorded=true;
+  }
+}
+function averageQueueMinutes() {
+  // Assigned riders are still waiting until they actually board. Deduplicate
+  // requests because pickup queues can also retain already-boarded passengers.
+  const waiting=new Set(queue);
+  for(const car of cars)for(const request of car.pickupQueue || [])waiting.add(request);
+  let total=boardedQueueMinutes,count=boardedQueueCount;
+  for(const request of waiting) {
+    if(request.pickedUpAt != null || request._queueRecorded)continue;
+    total+=Math.max(0,simElapsed-request.requestedAt);count++;
+  }
+  return count ? total/count : null;
+}
 function completePassenger(request) {
   if(!Number.isFinite(request.pickedUpAt) || request.completedAt != null) return false;
   request.completedAt=simElapsed;
@@ -3310,6 +3332,8 @@ function updateHUD() {
   document.getElementById("completed-rides").textContent = completedCount;
   document.getElementById("pooled-rides").textContent = pooledCount;
   document.getElementById("population").textContent = humans.length;
+  const averageQueue=averageQueueMinutes();
+  document.getElementById("avg-queue").textContent=averageQueue==null ? "—" : averageQueue.toFixed(1);
   document.getElementById("avg-trip").textContent = completedCount ?
     (completedRideMinutes/completedCount).toFixed(1) : "—";
   let totalClaims = 0;
@@ -3501,6 +3525,8 @@ document.getElementById("reset").addEventListener("click", () => {
   completedTrips.length = 0;
   completedCount = 0;
   completedRideMinutes = 0;
+  boardedQueueMinutes = 0;
+  boardedQueueCount = 0;
   simElapsed = 0;
   pooledCount = 0;
   metricsHist.length = 0;
@@ -3605,7 +3631,7 @@ function removeCars(kind, n) {
     releaseRemaining(car);
     if (car.pickupQueue) {                     // re-queue riders not yet picked up
       for (const r of car.pickupQueue) {
-        if (!car.riders.includes(r)) { r.requestedAt = simElapsed; queue.push(r); }
+        if (!car.riders.includes(r)) { queue.push(r); }
       }
     }
     if (car === spectateCar) stopSpectate();
