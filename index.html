@@ -189,7 +189,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
   <div class="guide-body">
     <p>Explore how a shared autonomous transport fleet serves a compact city and its surrounding neighborhoods. Change demand, fleet sizes, ride sharing and human-driven traffic, then watch how trips, queues and road pressure respond.</p>
     <h3>The world and its riders</h3>
-    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. Residents travel between homes, jobs, shops and school. Scheduled trains and events add bursts of passengers.</p>
+    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then return off-map. Riders transfer to the road fleet; outbound passengers board at the platforms. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
     <h3>Getting around the app</h3>
     <p>Scroll through the regional, center and neighborhood maps, or use the map shortcuts. They show the same simulation at different scales. Tap an active vehicle for Driver POV. Auto runs scheduled demand; Interactive lets you choose buildings and inspect a trip’s route. Use Pause or Reset day as needed. Playback speed advances everything together—it does not make trips shorter in simulated minutes.</p>
     <h3>Dispatch, queues and ride sharing</h3>
@@ -214,7 +214,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#5b9bd5"></span>Employer</div>
       <div class="leg"><span class="sw" style="background:#70ad47"></span>Grocery</div>
       <div class="leg"><span class="sw" style="background:#ffc000"></span>School</div>
-      <div class="leg"><span class="sw" style="background:#c00000"></span>Train station</div>
+      <div class="leg"><span class="sw" style="background:#c00000"></span>Rail stations</div>
+      <div class="leg"><span class="sw" style="background:#f8fafc;border:2px solid #2563eb"></span>Train (cap 60)</div>
       <div class="leg"><span class="sw" style="background:#9a9a9a"></span>Residential</div>
       <div class="leg"><span class="sw" style="background:#c29aca"></span>Apartments (100 units)</div>
       <div class="leg"><span class="sw" style="background:#14b8a6"></span>Sedan (cap 4)</div>
@@ -290,6 +291,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="row"><span>Time</span><span id="clock">06:30</span></div>
       <div class="row"><span>Population</span><span id="population">300</span></div>
       <div class="row"><span>Active rides</span><span id="active-rides">0</span></div>
+      <div class="row"><span>Train aboard</span><span id="train-aboard">No train</span></div>
+      <div class="row"><span>Rail waiting</span><span id="rail-waiting">Central 0 · P&amp;R 0</span></div>
       <div class="row"><span>Queued</span><span id="queued-rides">0</span></div>
       <div class="row"><span>Completed</span><span id="completed-rides">0</span></div>
       <div class="row"><span>Pooled riders</span><span id="pooled-rides">0</span></div>
@@ -411,7 +414,7 @@ const extraNodes = new Map();
 const developments = [];
 const BUILDINGS = [
   { col:3,row:2,type:"emergency",name:"Police / Fire" },
-  { col:0,row:0,type:"employer",name:"NorthCo" },
+  { col:3,row:0,type:"employer",name:"NorthCo" },
   { col:5,row:0,type:"employer",name:"EastBank" },
   { col:0,row:5,type:"employer",name:"SouthLabs" },
   { col:5,row:5,type:"employer",name:"WestWorks" },
@@ -419,7 +422,7 @@ const BUILDINGS = [
   { col:4,row:4,type:"residential",name:"Riverbend Apts",apartments:100 },
   { col:1,row:3,type:"grocery",name:"GreenMart" },
   { col:4,row:2,type:"grocery",name:"CityFoods" },
-  { col:3,row:0,type:"station",name:"Central Stn" },
+  { col:0,row:0,type:"station",name:"Central Stn" },
   { col:2,row:4,type:"residential",name:"Maple Row" },
   { col:3,row:5,type:"residential",name:"Cedar Block" },
   { col:0,row:2,type:"residential",name:"Birch Hgts" },
@@ -452,6 +455,7 @@ function edgeKey(a, b) { return a < b ? a + "-" + b : b + "-" + a; }
 
 const adj = {};            // nodeId -> [{ to, key }]
 const directionalBlocks = new Map();
+const railBlockedEdges=new Map();
 const edges = {};          // edgeKey -> { a, b, claims: Set<carId> }
 function addEdge(a, b) {
   const k = edgeKey(a, b);
@@ -530,6 +534,14 @@ for (let side=0; side<5; side++) {
     Math.max(...pts.map(p=>p[0]))+70,Math.max(...pts.map(p=>p[1]))+70];
   developments.push(dev);
 }
+// Extend the farthest Juniper cul-de-sac with a road-accessible rail terminal.
+const juniper=developments[4];
+const parkRoadEnd=juniper.culDeSacs.reduce((a,b)=>nodeXY(a)[0]+nodeXY(a)[1]>nodeXY(b)[0]+nodeXY(b)[1]?a:b);
+const parkXY=nodeXY(parkRoadEnd);
+const parkAccess=roadPath(parkRoadEnd,[[parkXY[0]+CELL*.8,parkXY[1]+CELL*.8]],20);
+const parkRide={name:"Juniper Park & Ride",type:"station",color:"#c00000",x:nodeXY(parkAccess)[0]+36,y:nodeXY(parkAccess)[1]+36,size:55,accessId:parkAccess,development:4};
+BUILDINGS.push(parkRide);buildingsByType.station.push(parkRide);
+juniper.bounds[2]=Math.max(juniper.bounds[2],parkRide.x+90);juniper.bounds[3]=Math.max(juniper.bounds[3],parkRide.y+90);
 for (const e of Object.values(edges)) {
   e.speedKph=e.speedKph || 25;
   const a=nodeXY(e.a),b=nodeXY(e.b); e.length=Math.hypot(a[0]-b[0],a[1]-b[1])/CELL;
@@ -917,6 +929,7 @@ function averageQueueMinutes() {
 function completePassenger(request) {
   if(!Number.isFinite(request.pickedUpAt) || request.completedAt != null) return false;
   request.completedAt=simElapsed;
+  if(request.to && railWaiting.has(request.to.name))railWaiting.get(request.to.name).push({id:request.id});
   const tripMin=simElapsed-request.pickedUpAt;
   completedCount++;
   completedRideMinutes+=tripMin;
@@ -1046,6 +1059,7 @@ let incidentSeq=0,recoverySeq=0;
 let nextPoliceAt=180*(.5+Math.random()),nextFireAt=600*(.5+Math.random()),nextTroubleAt=480*(.5+Math.random());
 function nextRareEvent(mean) {return simElapsed + mean*(.5+Math.random());}
 function directionBlocked(from,to,incidentId=null) {
+  if(railBlockedEdges.has(edgeKey(from,to)))return true;
   return [...directionalBlocks.values()].some(block=>block.from===from && block.to===to && block.until>simElapsed && block.incidentId!==incidentId);
 }
 function releaseAllClaims(car) {for(const e of Object.values(edges))e.claims.delete(car.id);}
@@ -1711,6 +1725,7 @@ function advanceSegment(car) {
 
 function arriveAtRouteEnd(car) {
   if(car.kind==="human") {
+    if(railWaiting.has(car.destination.name))railWaiting.get(car.destination.name).push({id:car.id});
     releaseAllClaims(car);car.route=null;car.state="human_done";
     dbg("TRAFFIC",car.id+" reached "+car.destination.name+" · left the road");return;
   }
@@ -2219,6 +2234,7 @@ function gridlockBreakdown() {
   }
   const blocked=new Set([...directionalBlocks.values()].filter(b=>b.until>simElapsed).map(b=>edgeKey(b.from,b.to)));
   for(const o of ix.obstacles)if(o.active && ["parked truck","jaywalker"].includes(o.kind))blocked.add(o.edgeKey);
+  for(const key of railBlockedEdges.keys())blocked.add(key);
   counts.blocked=blocked.size;
   const values=Object.fromEntries(Object.entries(counts).map(([key,n])=>[key,n/N_EDGES]));
   return {values,total:Object.values(values).reduce((a,b)=>a+b,0)};
@@ -2243,6 +2259,7 @@ const eventSchedule = [
     pickup: "Central Stn", dropoff: "residential", count: 10 },
   { minute: 15 * 60 + 5, label: "Hillside school day ends — 10 outbound students",
     pickup: "Hillside", dropoff: "residential", count: 10 },
+  { minute: 17 * 60 + 15, label:"Evening train service",pickup:"Central Stn",dropoff:"residential",count:40 },
   { minute: 17 * 60 + 0, label: "Outbound train at Central Stn — 12 passengers gathering",
     pickup: "residential", dropoff: "Central Stn", count: 12 },
 ];
@@ -2250,7 +2267,7 @@ const eventSchedule = [
 function tickEvents() {
   for (const evt of eventSchedule) {
     if (!evt.fired && simMinute >= evt.minute) {
-      fireEvent(evt);
+      if(evt.pickup==="Central Stn")scheduleTrain(evt);else fireEvent(evt);
       evt.fired = true;
     }
   }
@@ -2490,12 +2507,12 @@ function render() {
     ctx.save();ctx.translate(view.tx,view.ty);ctx.scale(view.scale,view.scale);
     drawStreets();drawCongestion();drawBuildings();drawRail();
     if(mode==="interactive") drawInteractiveOverlay();
-    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();drawEmergencyScene();
+    drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();drawEmergencyScene();drawTrains();
     if(view.id==="region") {
       ctx.font=`bold ${12/view.scale}px sans-serif`;ctx.textAlign="center";ctx.fillStyle="#e2e8f0";
       for(const d of developments) ctx.fillText(d.name,(d.bounds[0]+d.bounds[2])/2,d.bounds[1]-12/view.scale);
       ctx.fillText("City center",390,820);
-      ctx.fillText("↑ Other metros",buildingCenter(buildingByName("Central Stn"))[0],worldBounds[1]+24/view.scale);
+      const portal=railPoint((worldBounds[1]+60-railPoints[0][1])/Math.sin(75*Math.PI/180));ctx.fillText("Other metros ↖",portal.x,portal.y);
     }
     ctx.restore();
     if(view.id==="region") {
@@ -2507,20 +2524,181 @@ function render() {
     drawEventBanner(ctx,780,780);
   }
 }
+const trains=[],trainJobs=[];
+const railWaiting=new Map([["Central Stn",[]],["Juniper Park & Ride",[]]]);
+let railPoints=[],railSegments=[],railLength=0,centralRailDistance=0,trainSequence=0;
+const RAIL_CAR_LENGTH=42,RAIL_CAR_SPACING=46,TRAIN_CAPACITY=60;
+let railCrossings=[];
+// Find a dedicated terminal alignment around the existing Juniper houses.
+function railAvoidHomes(start,end) {
+  const boxes=juniper.homes.map(b=>[b.x-b.size/2-16,b.y-b.size/2-16,b.x+b.size/2+16,b.y+b.size/2+16]);
+  const points=[start,end,...boxes.flatMap(b=>[[b[0],b[1]],[b[0],b[3]],[b[2],b[1]],[b[2],b[3]]])];
+  function clear(a,b) {
+    return !boxes.some(box=>{
+      let low=0,high=1;
+      for(let axis=0;axis<2;axis++) {
+        const delta=b[axis]-a[axis],min=box[axis]+.001,max=box[axis+2]-.001;
+        if(Math.abs(delta)<1e-8){if(a[axis]<=min||a[axis]>=max)return false;}
+        else {let t1=(min-a[axis])/delta,t2=(max-a[axis])/delta;if(t1>t2)[t1,t2]=[t2,t1];low=Math.max(low,t1);high=Math.min(high,t2);}
+      }
+      return low<high;
+    });
+  }
+  const dist=points.map(()=>Infinity),previous=[],visited=new Set();dist[0]=0;
+  while(visited.size<points.length) {
+    let best=-1;
+    for(let i=0;i<points.length;i++)if(!visited.has(i)&&(best<0||dist[i]<dist[best]))best=i;
+    if(best<0||!Number.isFinite(dist[best]))break;
+    if(best===1){const path=[];for(let i=1;i!=null;i=previous[i])path.unshift(points[i]);return path;}
+    visited.add(best);
+    for(let i=0;i<points.length;i++)if(!visited.has(i)&&clear(points[best],points[i])) {
+      const cost=dist[best]+Math.hypot(points[i][0]-points[best][0],points[i][1]-points[best][1]);
+      if(cost<dist[i]){dist[i]=cost;previous[i]=best;}
+    }
+  }
+  return [start,[start[0],juniper.bounds[3]+30],[end[0],juniper.bounds[3]+30],end];
+}
+function setupRail() {
+  const station=buildingCenter(buildingByName("Central Stn"));
+  const top=worldBounds[1]-180;
+  const approach=[station[0]-(station[1]-top)/Math.tan(75*Math.PI/180),top];
+  const grid=(x,y)=>[PADDING+x*CELL,PADDING+y*CELL];
+  railPoints=[approach,station,grid(1.5,.5),grid(2.5,1.5),grid(4.5,1.5),grid(5.5,2.5),grid(4.5,3.5),grid(3.5,4.5),grid(4.5,5.5),grid(4.5,6.4),grid(6.4,6.4),[parkRide.x,parkRide.y]];
+  railPoints.splice(-2,2,...railAvoidHomes(railPoints.at(-2),railPoints.at(-1)));
+  railLength=0;railSegments=[];
+  for(let i=1;i<railPoints.length;i++) {
+    const a=railPoints[i-1],b=railPoints[i],length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    railSegments.push({a,b,length,start:railLength});railLength+=length;
+    if(i===1)centralRailDistance=railLength;
+  }
+  railCrossings=[];
+  for(const [key,edge] of Object.entries(edges)) {
+    const a=nodeXY(edge.a),b=nodeXY(edge.b),sx=b[0]-a[0],sy=b[1]-a[1];
+    for(const seg of railSegments) {
+      const rx=seg.b[0]-seg.a[0],ry=seg.b[1]-seg.a[1],den=rx*sy-ry*sx;
+      if(Math.abs(den)<1e-8)continue;
+      const dx=a[0]-seg.a[0],dy=a[1]-seg.a[1];
+      const t=(dx*sy-dy*sx)/den,u=(dx*ry-dy*rx)/den;
+      if(t>=-1e-8&&t<=1+1e-8&&u>=-1e-8&&u<=1+1e-8)railCrossings.push({key,distance:seg.start+t*seg.length,x:seg.a[0]+t*rx,y:seg.a[1]+t*ry});
+    }
+  }
+}
+function railPoint(distance) {
+  const seg=railSegments.find(seg=>distance<=seg.start+seg.length)||railSegments.at(-1);
+  const t=(distance-seg.start)/seg.length;
+  return {x:seg.a[0]+(seg.b[0]-seg.a[0])*t,y:seg.a[1]+(seg.b[1]-seg.a[1])*t,heading:Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0])};
+}
+function scheduleTrain(evt) {
+  trainJobs.push(evt);
+  dbg("TRAIN","Train scheduled · other metro → Central Stn → Juniper Park & Ride → other metro · capacity 60");
+}
+function startTrain(evt) {
+  // Keep the scheduled central arrivals; fill remaining space with terminal riders.
+  const central=Math.min(40,evt.count),park=Math.min(TRAIN_CAPACITY-central,20);
+  const train={id:"train-"+(++trainSequence),distance:-150,direction:1,state:"moving",nextStop:"central",riders:[],dwellUntil:0};
+  for(let i=0;i<central+park;i++)train.riders.push({exitAt:i<central?"central":"park"});
+  trains.push(train);
+  fireEvent({pickup:"residential",dropoff:parkRide.name,count:8,label:"Passengers heading to Juniper Park & Ride"});
+  dbg("TRAIN",train.id+" inbound · "+train.riders.length+"/60 aboard; 8 park-and-ride connections requested");
+}
+function railTransfer(train,building,boarding,count) {
+  const point=railPoint(train.distance-train.direction*RAIL_CAR_SPACING),home=buildingCenter(building);
+  for(let i=0;i<count;i++)passengerTransfers.push({from:boarding?home:[point.x,point.y],to:boarding?[point.x,point.y]:home,start:Date.now(),duration:400/speedMult,boarding,car:train});
+}
+function trainStop(train,stop) {
+  const building=stop==="park"?parkRide:buildingByName("Central Stn");
+  const drop=train.riders.filter(r=>r.exitAt===stop).length;
+  train.riders=train.riders.filter(r=>r.exitAt!==stop);
+  if(drop) {
+    fireEvent({pickup:building.name,dropoff:"residential",count:drop,label:train.id+" · "+drop+" passengers arrive at "+building.name});
+    railTransfer(train,building,false,drop);
+  }
+  // Board outbound riders on the return leg, or at the turnaround terminal.
+  let boarded=0;
+  if(stop==="park"||train.direction<0) {
+    const waiting=railWaiting.get(building.name);
+    while(waiting.length&&train.riders.length<TRAIN_CAPACITY){train.riders.push({...waiting.shift(),exitAt:"metro"});boarded++;}
+    railTransfer(train,building,true,boarded);
+  }
+  train.state="dwelling";train.dwellUntil=simElapsed+1;
+  dbg("TRAIN",train.id+" stopped at "+building.name+" · "+drop+" off, "+boarded+" on · "+train.riders.length+"/60 aboard · one minute dwell");
+}
+function tickTrains() {
+  if(!trains.length&&trainJobs.length)startTrain(trainJobs.shift());
+  for(const train of trains) {
+    if(train.state==="dwelling") {
+      if(simElapsed<train.dwellUntil)continue;
+      if(train.nextStop==="park") {train.direction=-1;train.distance-=2*RAIL_CAR_SPACING;train.nextStop="central-return";}
+      else train.nextStop=train.direction>0?"park":"metro";
+      train.state="moving";dbg("TRAIN",train.id+" departing for "+train.nextStop);
+    }
+    const target=train.nextStop==="central"?centralRailDistance+RAIL_CAR_SPACING:train.nextStop==="park"?railLength:train.nextStop==="central-return"?centralRailDistance-RAIL_CAR_SPACING:-200;
+    const step=50*1000/60*SIM_MIN_PER_TICK/METERS_PER_CELL*CELL;
+    train.distance+=train.direction*step;
+    if(train.direction>0?train.distance>=target:train.distance<=target) {
+      train.distance=target;
+      if(train.nextStop==="metro") {train.state="done";dbg("TRAIN",train.id+" left for other metro · "+train.riders.length+" passengers aboard");}
+      else trainStop(train,train.nextStop==="park"?"park":"central");
+    }
+  }
+  for(let i=trains.length-1;i>=0;i--)if(trains[i].state==="done")trains.splice(i,1);
+  const next=new Map();
+  for(const train of trains) {
+    const tail=train.distance-train.direction*2*RAIL_CAR_SPACING;
+    const low=Math.min(train.distance,tail)-RAIL_CAR_LENGTH/2-(train.direction<0?60:0);
+    const high=Math.max(train.distance,tail)+RAIL_CAR_LENGTH/2+(train.direction>0?60:0);
+    for(const crossing of railCrossings)if(crossing.distance>=low&&crossing.distance<=high)next.set(crossing.key,crossing);
+  }
+  for(const [key,crossing] of next)if(!railBlockedEdges.has(key))dbg("TRAIN","Crossing closed to road traffic · "+key);
+  for(const key of railBlockedEdges.keys())if(!next.has(key))dbg("TRAIN","Crossing reopened after last carriage cleared · "+key);
+  railBlockedEdges.clear();for(const [key,crossing] of next)railBlockedEdges.set(key,crossing);
+}
+function drawRailFPV(cam) {
+  fpvCtx.strokeStyle="#94a3b8";fpvCtx.lineWidth=2;
+  for(const seg of railSegments)for(const side of [-5,5]) {
+    const angle=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]),x=-Math.sin(angle)*side,y=Math.cos(angle)*side;
+    strokePolyWorld([[seg.a[0]+x,seg.a[1]+y,.2],[seg.b[0]+x,seg.b[1]+y,.2]],cam);
+  }
+}
+function drawTrainFPV(cam) {
+  const coaches=[];
+  for(const train of trains)for(let i=0;i<3;i++)coaches.push(railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING));
+  coaches.sort((a,b)=>Math.hypot(b.x-cam.x,b.y-cam.y)-Math.hypot(a.x-cam.x,a.y-cam.y));
+  for(const p of coaches) {
+    if(Math.hypot(p.x-cam.x,p.y-cam.y)>FPV_FAR+50)continue;
+    const P=(u,v,z)=>[p.x+Math.cos(p.heading)*u-Math.sin(p.heading)*v,p.y+Math.sin(p.heading)*u+Math.cos(p.heading)*v,z];
+    fpvCtx.fillStyle="#e2e8f0";
+    for(const v of [-8,8])fillPolyWorld([P(-21,v,0),P(21,v,0),P(21,v,18),P(-21,v,18)],cam);
+    fpvCtx.fillStyle="#2563eb";
+    fillPolyWorld([P(-21,-8,18),P(21,-8,18),P(21,8,18),P(-21,8,18)],cam);
+    for(const u of [-21,21])fillPolyWorld([P(u,-8,0),P(u,8,0),P(u,8,18),P(u,-8,18)],cam);
+  }
+}
 function drawRail() {
-  const [sx,sy]=buildingCenter(buildingByName("Central Stn"));
-  const top=worldBounds[1];
-  ctx.strokeStyle="#78879b";ctx.lineWidth=2;
-  for(const dx of [-5,5]) {ctx.beginPath();ctx.moveTo(sx+dx,top);ctx.lineTo(sx+dx,sy);ctx.stroke();}
-  ctx.beginPath();for(let y=top;y<sy;y+=18){ctx.moveTo(sx-9,y);ctx.lineTo(sx+9,y);}ctx.stroke();
-  for(const evt of eventSchedule.filter(e=>e.pickup==="Central Stn")) {
-    const until=evt.minute-simMinute;
-    if(until>10 || until< -2) continue;
-    const t=Math.max(0,Math.min(1,1-until/10));const y=top+(sy-top)*t;
-    const w=74/Math.max(.55,viewScale),h=24/Math.max(.55,viewScale);
-    ctx.fillStyle="#cbd5e1";ctx.fillRect(sx-w/2,y-h/2,w,h);
-    ctx.fillStyle="#0f1014";ctx.font=`bold ${12/Math.max(.55,viewScale)}px sans-serif`;ctx.textAlign="center";
-    ctx.fillText(`${evt.count} riders ↓`,sx,y+4);
+  ctx.save();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;
+  for(const offset of [-6,6]) {
+    ctx.beginPath();
+    for(const [i,seg] of railSegments.entries()) {
+      const angle=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]),dx=-Math.sin(angle)*offset,dy=Math.cos(angle)*offset;
+      if(i===0)ctx.moveTo(seg.a[0]+dx,seg.a[1]+dy);else ctx.lineTo(seg.a[0]+dx,seg.a[1]+dy);
+      ctx.lineTo(seg.b[0]+dx,seg.b[1]+dy);
+    }ctx.stroke();
+  }
+  ctx.beginPath();for(let d=0;d<railLength;d+=18){const p=railPoint(d),dx=-Math.sin(p.heading)*10,dy=Math.cos(p.heading)*10;ctx.moveTo(p.x-dx,p.y-dy);ctx.lineTo(p.x+dx,p.y+dy);}ctx.stroke();ctx.restore();
+}
+function drawTrains() {
+  for(const train of trains) {
+    ctx.strokeStyle="#64748b";ctx.lineWidth=4;ctx.beginPath();
+    for(let i=0;i<3;i++){const p=railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.stroke();
+  }
+  for(const train of trains)for(let i=0;i<3;i++) {
+    const p=railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING);
+    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.fillStyle="#f8fafc";ctx.strokeStyle="#2563eb";ctx.lineWidth=3;
+    ctx.fillRect(-21,-8,42,16);ctx.strokeRect(-21,-8,42,16);ctx.fillStyle="#2563eb";ctx.fillRect(-14,-5,27,4);
+    ctx.fillStyle="#0f172a";ctx.font="bold 8px sans-serif";ctx.textAlign="center";ctx.fillText(i===1?train.riders.length+"/60":"RAIL",0,6);ctx.restore();
+  }
+  for(const crossing of railBlockedEdges.values()) {
+    ctx.fillStyle="#ef4444";ctx.fillRect(crossing.x-12,crossing.y-3,24,6);ctx.fillStyle="#fff";ctx.fillRect(crossing.x-8,crossing.y-1,16,2);
   }
 }
 
@@ -2718,7 +2896,7 @@ function drawBuildings() {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     if(viewScale>.45) {
-      ctx.fillText(b.development != null ? b.name.split(" ").pop() : b.name, bx + BSIZE / 2, by + BSIZE / 2 - (b.apartments ? 6 : 0));
+      ctx.fillText(b===parkRide ? "Park & Ride" : b.development != null ? b.name.split(" ").pop() : b.name, bx + BSIZE / 2, by + BSIZE / 2 - (b.apartments ? 6 : 0));
       if(b.apartments)ctx.fillText(b.apartments+" apartments",bx+BSIZE/2,by+BSIZE/2+8);
     }
   }
@@ -3030,7 +3208,9 @@ function renderFPV(focalCar = getFocalCar()) {
 
   drawRoadsFPV(cam);
   drawOneWayArrowsFPV(cam);
+  drawRailFPV(cam);
   drawBuildingsFPV(cam);
+  drawTrainFPV(cam);
   drawTrafficControlsFPV(cam);
   drawDynamicFPV(cam, focalCar);
   drawTransfersFPV(cam);
@@ -3717,6 +3897,8 @@ function updateHUD() {
   document.getElementById("avg-queue").textContent=averageQueue==null ? "—" : averageQueue.toFixed(1);
   document.getElementById("avg-trip").textContent = completedCount ?
     (completedRideMinutes/completedCount).toFixed(1) : "—";
+  document.getElementById("train-aboard").textContent=trains.length?trains.map(t=>t.riders.length+"/60 · "+(t.state==="dwelling"?"at platform":t.direction>0?"inbound":"outbound")).join("; "):"No train";
+  document.getElementById("rail-waiting").textContent="Central "+railWaiting.get("Central Stn").length+" · P&R "+railWaiting.get(parkRide.name).length;
   const pressure=gridlockBreakdown(),gridlock=pressure.total;
   gridlockPeak=Math.max(gridlockPeak,gridlock);
   document.getElementById("pressure-overall-value").textContent="Current "+gridlock.toFixed(3)+" · Max "+gridlockPeak.toFixed(3);
@@ -3871,6 +4053,7 @@ function simulationStep() {
     advanceSimulationTime(SIM_MIN_PER_TICK);
     checkSchedules();
     tickEvents();
+    tickTrains();
     tickHumanTraffic();
     tickRareEvents();
     tickEmergencyVehicles();
@@ -3883,6 +4066,7 @@ function simulationStep() {
     updateObstacles();
   } else if (mode === "interactive" && ix.drivingCar && ix.drivingCar.state!=="idle") {
     advanceSimulationTime(SIM_MIN_PER_TICK);
+    tickTrains();
     tickStoplights();
     stepCars(1, ix.drivingCar);
     for(const human of cars.filter(c=>c.kind==="human"&&c.state!=="human_done"))stepCars(1,human);
@@ -3930,6 +4114,7 @@ document.getElementById("reset").addEventListener("click", () => {
   for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || ["recovery","human"].includes(cars[i].kind))cars.splice(i,1);
   featuredCar=null;cockpitCar=null;
   incidents.length=0;directionalBlocks.clear();
+  trains.length=0;trainJobs.length=0;railBlockedEdges.clear();for(const waiting of railWaiting.values())waiting.length=0;
   nextPoliceAt=180*(.5+Math.random());nextFireAt=600*(.5+Math.random());nextTroubleAt=480*(.5+Math.random());
   simMinute = DAY_START;
   humanSpawnCredit=0;
@@ -4117,6 +4302,7 @@ setMode("auto");
 const allPoints=[...extraNodes.values(),[0,0],[780,780]];
 const worldBounds=[Math.min(...allPoints.map(p=>p[0]))-100,Math.min(...allPoints.map(p=>p[1]))-180,
  Math.max(...allPoints.map(p=>p[0]))+100,Math.max(...allPoints.map(p=>p[1]))+100];
+setupRail();
 const mapViews=[];
 const wrap=document.querySelector(".canvas-wrap");
 function addMap(id,title,description,bounds,existing) {
@@ -4130,7 +4316,7 @@ function addMap(id,title,description,bounds,existing) {
  const view={id,canvas:cv,scale,tx:390-(bounds[0]+bounds[2])/2*scale,ty:390-(bounds[1]+bounds[3])/2*scale};
  mapViews.push(view);cv.addEventListener("click",e=>handleMapClick(e,view));
 }
-addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. The rail continues north to other metros; numbered arrivals reach Central Station at scheduled times.",worldBounds);
+addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. Three-car trains carry up to 60 passengers between other metros, corner Central Station and Juniper Park & Ride. Red crossing gates stop road traffic until the train clears.",worldBounds);
 addMap("center","15 minute city center","6 × 6 blocks · 600 × 600 m · jobs, schools, groceries and Central Station. Tap buildings in Interactive mode to plan a trip across any map.",[0,0,780,780],canvas);
 for(const [i,d] of developments.entries()) addMap("district-"+i,d.name,
  `${d.homes.length} residences · ${d.gapMeters===0?"directly connected":(d.gapMeters/1609).toFixed(2)+" mi from the city edge"} · winding boulevards and four cul-de-sacs.`,d.bounds);

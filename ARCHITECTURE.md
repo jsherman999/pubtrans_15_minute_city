@@ -23,7 +23,7 @@ Seven independent view transforms share the same live state. Pointer coordinates
 
 Canvas backing buffers follow CSS display dimensions multiplied by device pixel ratio, while map coordinates (780 × 780) and POV projection coordinates (640 × 640) stay fixed. Each visible frame checks sizing, so window resizing, browser zoom and monitor density changes redraw at native resolution. The POV buffer matches the cockpit pixel-for-pixel; metrics use the same sizing helper. Unchanged buffers are reused.
 
-Rail is a visual layer, separate from the drivable graph. Passenger-count markers interpolate along it during the ten simulated minutes before each train event; the existing event scheduler injects passengers at arrival. Reset now clears event fired flags and the active banner as well as trips.
+Rail has a dedicated polyline and train state machine, separate from road vehicles. `setupRail` builds the 75° external approach, city alignment and a visibility-graph detour around Juniper homes. Road/rail intersections become crossing gates. `tickTrains` advances three-coach trains, handles platform dwell and passenger transfers, and updates `railBlockedEdges` from the complete train footprint plus advance warning. Road routing/movement and the gridlock breakdown respect these gates. Scheduled events launch trains; road requests are injected at actual alighting. Outbound road completions enter platform waiting lists. Reset clears trains, platform queues and crossings.
 
 ## Residential rendering and transfers
 

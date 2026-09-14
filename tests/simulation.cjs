@@ -30,7 +30,7 @@ for(let trial=0;trial<12;trial++) {
    }
  }}`);
  assert.ok(run('completedTrips.length')>0);
- assert.equal(run('eventSchedule.filter(e=>e.pickup==="Central Stn").every(e=>e.fired)'),true);
+ assert.equal(run('eventSchedule.filter(e=>e.pickup==="Central Stn" && e.minute<=simMinute).every(e=>e.fired)'),true);
  elements.get('reset').click();
  assert.equal(run('eventSchedule.some(e=>e.fired)'),false);
  assert.equal(run('completedTrips.length'),0);
@@ -484,3 +484,45 @@ console.log('PASS: eight-meter following gap, human/fleet interaction, opposite-
  `);
 }
 console.log('PASS: gridlock breakdown separates public, private, response and deduplicated obstructions; contributions sum to total.');
+{
+ const {run,elements}=boot(908);
+ run(`
+   dbg=()=>{};cars.length=0;
+   const station=buildingByName('Central Stn');
+   if(station.col!==0||station.row!==0)throw Error('station not in corner');
+   const first=railSegments[0];
+   if(Math.abs(Math.atan2(first.b[1]-first.a[1],first.b[0]-first.a[0])*180/Math.PI-75)>1e-8)throw Error('approach not 75 degrees');
+   if(!dijkstra(CENTRAL_NODE,parkRide.accessId)||!dijkstra(parkRide.accessId,CENTRAL_NODE))throw Error('park-and-ride has no road access');
+   if(railCrossings.length<5)throw Error('missing rail crossings');
+   for(let i=0;i<80;i++)railWaiting.get(parkRide.name).push({id:'park-'+i});
+   scheduleTrain({count:100});tickTrains();
+   const train=trains[0];
+   if(train.riders.length!==60)throw Error('incoming train capacity wrong');
+   let centralDrop=false,parkDrop=false,returned=false,sawGate=false;
+   for(let i=0;i<5000&&trains.length;i++) {
+     simElapsed+=SIM_MIN_PER_TICK;tickTrains();
+     if(train.riders.length>60)throw Error('train exceeded capacity');
+     if(railBlockedEdges.size)sawGate=true;
+     if(train.state==='dwelling'&&train.nextStop==='central')centralDrop=true;
+     if(train.state==='dwelling'&&train.nextStop==='park'){
+       parkDrop=true;if(train.riders.length!==60)throw Error('terminal boarding did not fill available seats');
+     }
+     if(train.direction<0)returned=true;
+   }
+   if(!centralDrop||!parkDrop||!returned||!sawGate||trains.length||railBlockedEdges.size)throw Error('incomplete train roundtrip or gate cleanup');
+   if(railWaiting.get(parkRide.name).length!==20)throw Error('excess passengers must remain waiting');
+   if(queue.filter(r=>r.from===station).length!==40||queue.filter(r=>r.from===parkRide).length!==20)throw Error('alighting riders not handed to fleet');
+   const crossing=railCrossings.find(c=>c.distance>centralRailDistance+200&&c.distance<railLength-200);
+   startTrain({count:10});const probe=trains[0];probe.distance=crossing.distance+50;probe.state='dwelling';probe.dwellUntil=simElapsed+10;
+   tickTrains();if(!railBlockedEdges.has(crossing.key))throw Error('gate opened before rear cleared');
+   const edge=edges[crossing.key];
+   if(!directionBlocked(edge.a,edge.b)||!directionBlocked(edge.b,edge.a))throw Error('crossing must stop both directions');
+   const roadCar=makeCar('sedan','gate-test');roadCar.nodeId=edge.a;roadCar.state='returning';
+   setRoute(roadCar,{nodes:[edge.a,edge.b],edges:[crossing.key],cost:1});roadCar.progress=.3;cars.push(roadCar);
+   stepCars(1,roadCar);if(roadCar.progress!==.3)throw Error('vehicle ignored gate');
+   probe.distance=crossing.distance+140;tickTrains();
+   if(railBlockedEdges.has(crossing.key))throw Error('gate stayed closed after full train cleared');
+ `);
+ elements.get('reset').click();assert.equal(run('trains.length+trainJobs.length+railBlockedEdges.size+[...railWaiting.values()].reduce((n,a)=>n+a.length,0)'),0);
+}
+console.log('PASS: corner station, 75-degree approach, road-connected terminal, 60-person train, both station transfers, capacity overflow, return service and full-length crossing protection.');

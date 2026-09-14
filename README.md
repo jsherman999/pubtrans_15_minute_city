@@ -10,7 +10,7 @@ A browser-only autonomous transit simulation adapted from [pubtrans_solved](http
 - Five neighborhoods with **24 individual residences each**, two winding boulevard branches and four cul-de-sacs per neighborhood.
 - The original four neighborhoods retain their randomized side-of-city placement and separation from zero (direct connection) to 1,609 m (about a mile). The fifth, **Juniper Commons**, always connects at the southeast corner, with its entrance 60 m from that corner (less than one 100 m block). Its boulevards extend outward from this attached entrance.
 - Sedans and shuttles share one connected road graph, serving neighborhood-to-center, center, local neighborhood and cross-neighborhood trips.
-- A visible railway runs north from Central Station off the regional map. Numbered rider markers approach before the scheduled 09:00, 11:30 and 13:00 arrivals. Those same events enqueue 12, 10 and 10 actual ride requests at the station.
+- Central Station occupies the northwest corner block. The off-map approach is at 75° to horizontal streets; a dedicated line continues through the center to Juniper Park & Ride. Moving three-car trains serve both stations and return off-map, with a maximum of 60 passengers.
 
 ## Using it
 
@@ -119,3 +119,9 @@ Lime-green cars marked **H** make persistent trips between buildings. They follo
 The **Human-driven traffic** slider starts at **1×**, approximately the previous human-obstacle arrival rate: one car per 11.925 simulated minutes (about five/hour). Increase up to **30×** (about 151/hour). It changes future arrivals; cars already driving finish their routes. Spawn points are checked for space and blocked starts retry later. Public fleet sizes, demand and completed passenger metrics exclude these private trips.
 
 The live horizontal chart decomposes Gridlock into public-fleet route reservations, human-driven route reservations, emergency/recovery route reservations and obstructed road segments. Contributions are divided by the number of road segments and sum to the score; bars show percentage shares. Obstructions on the same segment are counted once. This is a route-pressure indicator, not measured traffic density or a percent of vehicles stopped. A separate live count shows vehicles slowing/waiting behind traffic. Human cars no longer trigger the old one-shot six-second stop and fixed slowdown.
+
+## Train service
+
+Services launch at 09:00, 11:30, 13:00 and 17:15. Trains travel at 50 km/h and dwell for one simulated minute at each platform. Each white/blue train has three bus-length carriages and a 60-person total limit. Morning services carry the scheduled Central Station arrivals plus 20 park-and-ride arrivals; the evening service can arrive full. Actual dropoffs generate road-fleet requests only when the train stops. Eight feeder requests to the park-and-ride accompany each service. Riders delivered to either station wait for an outbound train; seats are filled up to capacity, with excess riders waiting for later service. Private cars arriving at a station also contribute a boarding passenger.
+
+Trains unload at Central, continue to the road-connected terminal at Juniper’s far end, unload/board, reverse, collect outbound Central passengers and depart off-map. Road crossings close ahead of the train and stay closed through the rear carriage, in both travel directions. Closures affect routing, movement and the road-obstruction contribution to Gridlock. Train aboard/rail waiting values appear in Live state; `TRAIN` messages report service, stops, counts and crossing changes. Reset clears trains, waiting rail passengers and gates.
