@@ -173,6 +173,12 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 .guide-body h3 {margin:22px 0 8px;font-size:16px;text-transform:none;letter-spacing:0;color:#f1f5f9;}
 .guide-body p {margin-top:12px;}
 .guide-body .guide-note {color:#a9b6c8;border-top:1px solid #303640;padding-top:16px;}
+.help-label {display:inline-flex;align-items:center;}
+.help-button {display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;min-height:24px;padding:0;margin-left:7px;border:1px solid #65758b;border-radius:50%;background:#242a33;color:#c8d6e8;font-size:12px;font-weight:700;line-height:1;vertical-align:middle;cursor:help;flex-shrink:0;letter-spacing:0;}
+.help-button:focus-visible {outline:2px solid #93c5fd;outline-offset:3px;}
+.help-tooltip {position:fixed;inset:auto;margin:0;width:min(330px,calc(100vw - 24px));max-height:min(360px,calc(100dvh - 24px));overflow:auto;padding:13px 15px;border:1px solid #65758b;border-radius:8px;background:#252c37;color:#e2e8f0;font-size:13px;line-height:1.55;white-space:pre-line;box-shadow:0 6px 24px #0008;}
+.help-tooltip::backdrop {background:transparent;}
+[data-help-anchor] {display:none!important;}
 </style>
 </head>
 <body>
@@ -252,7 +258,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
   </div>
   <aside class="sidebar" id="controls">
     <h1>PubTrans</h1>
-    <p class="sub">15 minute city · five connected neighborhoods</p>
+    <p class="sub" data-help-anchor=".sidebar > h1">15 minute city · five connected neighborhoods</p>
 
     <div class="mode-toggle">
       <button id="mode-auto" class="active">Auto</button>
@@ -266,8 +272,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="btn-row"><button id="pause">Pause</button><button id="reset">Reset day</button></div>
       <div class="btn-row"><button id="trigger-emergency">Trigger Emergency</button></div>
       <p class="hint small" id="emergency-status">No active emergencies.</p>
-      <p class="hint small">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
-      <p class="hint small" style="margin-top:8px">Click any active car on the map to spectate it (its POV opens in the Driver POV pane below; speed drops to 1×).</p>
+      <p class="hint small" data-help-anchor="#auto-controls label">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
+      <p class="hint small" style="margin-top:8px" data-help-anchor="#cockpit-section h3">Click any active car on the map to spectate it (its POV opens in the Driver POV pane below; speed drops to 1×).</p>
     </section>
 
     <section id="spectate-info" hidden>
@@ -293,24 +299,24 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <span>Overall gridlock</span><span id="pressure-overall-value">Current 0.000 · Max 0.000</span>
         <div class="pressure-track" id="pressure-overall-meter" role="meter" aria-label="Current gridlock relative to maximum since Reset day" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><div id="pressure-overall-bar"></div></div>
       </div>
-      <p class="hint small">Overall bar: current score relative to the highest reached since Reset day. Factor bars below: shares of the current score.</p>
+      <p class="hint small" data-help-anchor=".pressure-overall > span">Overall bar: current score relative to the highest reached since Reset day. Factor bars below: shares of the current score.</p>
       <div id="gridlock-breakdown" aria-label="Gridlock contribution breakdown">
         <div class="pressure-row"><span>Public fleet</span><span id="pressure-fleet-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-fleet-bar" style="background:#14b8a6"></div></div></div>
         <div class="pressure-row"><span>Human-driven</span><span id="pressure-human-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-human-bar" style="background:#a3e635"></div></div></div>
         <div class="pressure-row"><span>Emergency / recovery</span><span id="pressure-response-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-response-bar" style="background:#ef4444"></div></div></div>
         <div class="pressure-row"><span>Road obstructions</span><span id="pressure-blocked-value">0.000 · 0%</span><div class="pressure-track"><div id="pressure-blocked-bar" style="background:#facc15"></div></div></div>
       </div>
-      <p class="hint small">Bars show each factor’s share of the score. Score = route reservations + obstructed road segments, divided by all road segments. A pressure indicator, not a percentage of stopped traffic.</p>
+      <p class="hint small" data-help-anchor=".pressure-overall > span">Bars show each factor’s share of the score. Score = route reservations + obstructed road segments, divided by all road segments. A pressure indicator, not a percentage of stopped traffic.</p>
       <p class="hint small" id="traffic-following">0 vehicles waiting behind traffic.</p>
       <div class="row"><span>Sim load</span><span id="perf-cpu">—</span></div>
       <div class="row" id="perf-mem-row"><span>JS heap</span><span id="perf-mem">—</span></div>
-      <p class="hint small" id="perf-note" style="margin-top:6px"></p>
+      <p class="hint small" id="perf-note" data-help-anchor="#perf-cpu" style="margin-top:6px"></p>
     </section>
 
     <section id="cockpit-section">
       <h3>Driver POV <span id="cockpit-car" class="cockpit-car"></span></h3>
       <div class="cockpit-wrap"><canvas id="cockpit" width="640" height="640"></canvas></div>
-      <p class="hint small" id="cockpit-cap">Tap any active car on the grid to ride along — or watch a featured car.</p>
+      <p class="hint small" id="cockpit-cap" hidden>Tap any active car on the grid to ride along — or watch a featured car.</p>
     </section>
 
     <section id="sim-controls">
@@ -329,13 +335,14 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       </div>
       <p class="hint small" id="bus-assignments"></p>
       <div class="row"><label for="human-traffic">Human-driven traffic</label><input type="range" id="human-traffic" min="1" max="30" step="1" value="1"><span id="human-traffic-value">1×</span></div>
-      <p class="hint small" id="human-traffic-hint">Baseline: about 5 arrivals/hour · 0 on road. Existing cars finish their routes when reduced.</p>
+      <p class="hint small" id="human-traffic-hint" data-help-anchor="label[for=human-traffic]">1× is the original baseline of about five arrivals per simulated hour. Increase the slider to add persistent human-driven traffic. Existing cars finish their routes when reduced.</p>
+      <p class="hint small" id="human-traffic-status"></p>
       <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="100"><span id="ride-sharing-value">100%</span></div>
       <div class="row"><span>On-the-way pickups assigned</span><span id="shared-pickups">0</span></div>
-      <p class="hint small" id="ride-sharing-hint">On-the-way pickups · up to 400m extra driving per trip. Boarding stops also add time.</p>
-      <p class="hint small">Higher settings let buses and shuttles add unassigned waiting riders along their route or return to the center. Existing stops stay in order; seats already promised to waiting riders are reserved.</p>
-      <p class="hint small">Purple buses serve their assigned neighborhood ↔ city center all day, including schools and events. Added buses go to the least-served neighborhood. Removed buses finish assigned trips first.</p>
-      <p class="hint small">Adjusts the running sim live. Removing vehicles frees idle ones first; waiting riders are re-queued.</p>
+      <p class="hint small" id="ride-sharing-hint" data-help-anchor="label[for=ride-sharing]">On-the-way pickups · up to 400m extra driving per trip. Boarding stops also add time.</p>
+      <p class="hint small" data-help-anchor="label[for=ride-sharing]">Higher settings let buses and shuttles add unassigned waiting riders along their route or return to the center. Existing stops stay in order; seats already promised to waiting riders are reserved.</p>
+      <p class="hint small" data-help-anchor="#sim-controls h3">Purple buses serve their assigned neighborhood ↔ city center all day, including schools and events. Added buses go to the least-served neighborhood. Removed buses finish assigned trips first.</p>
+      <p class="hint small" data-help-anchor="#sim-controls h3">Adjusts the running sim live. Removing vehicles frees idle ones first; waiting riders are re-queued.</p>
     </section>
 
     <section id="interactive-panel" hidden>
@@ -350,7 +357,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <label class="field">Anthropic API key (interactive narration)</label>
       <input type="password" id="api-key" placeholder="sk-ant-… (optional)" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
       <p class="hint small" id="api-key-status"></p>
-      <p class="hint small">Held in memory only. With a key, the dispatcher's reasoning streams into the debug stream while in Interactive mode.</p>
+      <p class="hint small" data-help-anchor="label.field">Held in memory only. With a key, the dispatcher's reasoning streams into the debug stream while in Interactive mode.</p>
     </section>
   </aside>
 </div>
@@ -3077,6 +3084,7 @@ function renderCockpit() {
 
   const labelEl = document.getElementById("cockpit-car");
   const capEl = document.getElementById("cockpit-cap");
+  capEl.hidden=!focal;
   if (focal) {
     labelEl.textContent = "· " + focal.id + (cockpitFeatured ? " · featured" : "");
     capEl.textContent = focal.state.replace(/_/g, " ") + " · " +
@@ -3722,7 +3730,7 @@ function updateHUD() {
     document.getElementById("pressure-"+key+"-bar").style.width=share+"%";
   }
   document.getElementById("traffic-following").textContent=cars.filter(c=>c._followingTraffic&&c.route).length+" vehicles slowed or waiting behind traffic.";
-  document.getElementById("human-traffic-hint").textContent=Math.round(60/HUMAN_BASE_INTERVAL*humanTrafficRate)+" arrivals/hour · "+cars.filter(c=>c.kind==="human"&&c.state!=="human_done").length+" on road. Existing cars finish their routes when reduced.";
+  document.getElementById("human-traffic-status").textContent=Math.round(60/HUMAN_BASE_INTERVAL*humanTrafficRate)+" arrivals/hour · "+cars.filter(c=>c.kind==="human"&&c.state!=="human_done").length+" on road.";
   document.getElementById("gridlock").textContent = gridlock.toFixed(2);
   latestMetrics = { active, queued: queue.length, pooled: pooledCount, gridlock };
   if (spectateCar) {
@@ -4133,6 +4141,54 @@ document.getElementById("perf-note").textContent =
   "Runs entirely on this device" + (__cores ? " · " + __cores + " logical cores" : "") +
   (HEAP_OK ? "" : " · heap n/a in this browser");
 if (!HEAP_OK) document.getElementById("perf-mem-row").style.display = "none";
+// Top-layer popovers stay above scrolling panels; pointer and keyboard dismissal work on touch devices too.
+function installHelpTooltips() {
+  const groups=new Map();
+  function collect(source,anchor) {
+    if(!anchor)return;
+    source.hidden=true;
+    if(!groups.has(anchor))groups.set(anchor,[]);
+    groups.get(anchor).push(source);
+  }
+  for(const source of document.querySelectorAll("[data-help-anchor]"))collect(source,document.querySelector(source.dataset.helpAnchor));
+  for(const source of document.querySelectorAll(".map-card > p"))collect(source,source.parentElement.querySelector("h2"));
+  let index=0,closeCurrent=null;
+  for(const [anchor,sources] of groups) {
+    const label=anchor.id==="gridlock-breakdown"?"Gridlock factors":anchor.id==="perf-cpu"?"Simulation performance":anchor.textContent.trim();
+    const button=document.createElement("button");button.type="button";button.className="help-button";button.textContent="?";
+    button.setAttribute("aria-label","Help: "+label);
+    const tip=document.createElement("div");tip.className="help-tooltip";tip.id="help-tip-"+(++index);tip.setAttribute("popover","manual");tip.setAttribute("role","tooltip");
+    button.setAttribute("aria-describedby",tip.id);button.setAttribute("aria-expanded","false");
+    if(anchor.id==="gridlock-breakdown")anchor.before(button);
+    else if(anchor.id==="perf-cpu")anchor.previousElementSibling.append(button);
+    else if(anchor.tagName==="LABEL") {
+      const wrapper=document.createElement("span");wrapper.className="help-label";anchor.before(wrapper);wrapper.append(anchor,button);
+    } else anchor.append(button);
+    document.body.append(tip);
+    let pinned=false,closeTimer;
+    const refresh=()=>{tip.textContent=sources.map(source=>source.textContent.trim()).filter(Boolean).join("\n\n");};
+    function position() {
+      const r=button.getBoundingClientRect(),w=tip.getBoundingClientRect().width,h=tip.getBoundingClientRect().height;
+      tip.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+"px";
+      tip.style.top=Math.max(12,r.bottom+h+10<window.innerHeight?r.bottom+8:r.top-h-8)+"px";
+    }
+    function show() {if(closeCurrent&&closeCurrent!==hide)closeCurrent();closeCurrent=hide;clearTimeout(closeTimer);refresh();if(!tip.matches(":popover-open"))tip.showPopover();position();button.setAttribute("aria-expanded","true");}
+    function hide() {if(closeCurrent===hide)closeCurrent=null;if(tip.matches(":popover-open"))tip.hidePopover();pinned=false;button.setAttribute("aria-expanded","false");}
+    function leave() {closeTimer=setTimeout(()=>{if(!pinned&&document.activeElement!==button)hide();},150);}
+    button.addEventListener("mouseenter",show);button.addEventListener("mouseleave",leave);
+    button.addEventListener("focus",show);button.addEventListener("blur",leave);
+    button.addEventListener("click",()=>{if(pinned)hide();else{show();pinned=true;}});
+    tip.addEventListener("mouseenter",()=>clearTimeout(closeTimer));tip.addEventListener("mouseleave",leave);
+    tip.addEventListener("toggle",()=>{if(!tip.matches(":popover-open")){pinned=false;button.setAttribute("aria-expanded","false");}});
+    new MutationObserver(()=>{if(tip.matches(":popover-open")){refresh();position();}}).observe(sources[0].parentElement,{subtree:true,childList:true,characterData:true});
+    document.addEventListener("pointerdown",event=>{if(!button.contains(event.target)&&!tip.contains(event.target))hide();});
+    document.addEventListener("keydown",event=>{if(event.key==="Escape")hide();});
+    window.addEventListener("resize",hide);document.addEventListener("scroll",event=>{if(event.target===document || (event.target!==tip && event.target.contains?.(button)))hide();},true);
+    refresh();
+  }
+}
+// The simulation test harness supplies only the DOM needed for simulation.
+if(document.querySelectorAll)installHelpTooltips();
 dbg("SYSTEM", "Debug stream active — Auto mode running at 1× (slowest).");
 setInterval(tick, BASE_TICK_MS);
 </script>
