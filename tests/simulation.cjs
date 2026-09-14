@@ -487,7 +487,7 @@ console.log('PASS: gridlock breakdown separates public, private, response and de
 {
  const {run,elements}=boot(908);
  run(`
-   dbg=()=>{};cars.length=0;
+   dbg=()=>{};cars.length=0;nextLocalTrainStop=()=>null; // isolate scheduled platform service
    const station=buildingByName('Central Stn');
    if(station.col!==0||station.row!==0)throw Error('station not in corner');
    const first=railSegments[0];
@@ -526,3 +526,26 @@ console.log('PASS: gridlock breakdown separates public, private, response and de
  elements.get('reset').click();assert.equal(run('trains.length+trainJobs.length+railBlockedEdges.size+[...railWaiting.values()].reduce((n,a)=>n+a.length,0)'),0);
 }
 console.log('PASS: corner station, 75-degree approach, road-connected terminal, 60-person train, both station transfers, capacity overflow, return service and full-length crossing protection.');
+for(const direction of [1,-1]) {
+ const {run}=boot(1209);
+ run(`
+   dbg=()=>{};cars.length=0;queue.length=0;
+   const candidates=BUILDINGS.map(b=>({b,stop:buildingRailStop(b)})).filter(x=>x.stop&&x.stop.distance>centralRailDistance+CELL&&x.stop.distance<railLength-CELL).sort((a,b)=>a.stop.distance-b.stop.distance);
+   const from=${direction}>0?candidates[0]:candidates.at(-1),to=${direction}>0?candidates.at(-1):candidates[0];
+   const train={id:'flex-test',direction:${direction},state:'moving',nextStop:${direction}>0?'park':'central-return',riders:Array.from({length:59},()=>({exitAt:'metro'}))};
+   const pickup=localStopDistance(train,from.stop.distance);
+   train.distance=pickup-(${direction})*CELL*.4;trains.push(train);
+   const request={id:70001,requestedAt:0,from:from.b,to:to.b,pickupId:from.b.accessId,dropoffId:to.b.accessId};
+   const excess={...request,id:70002},reverse={...request,id:70003,from:to.b,to:from.b};
+   const far={...request,id:70004,from:{x:1e6,y:1e6}};
+   const assigned={...request,id:70005};const car=makeCar('sedan','assigned-car');car.pickupQueue=[assigned];cars.push(car);
+   queue.push(request,excess,reverse,far);
+   for(let i=0;i<3000&&request.completedAt==null;i++){simElapsed+=SIM_MIN_PER_TICK;tickTrains();if(train.riders.length>60)throw Error('flex pickup exceeded capacity');}
+   if(request.pickedUpAt==null||request.completedAt==null||completedCount!==1)throw Error('flex rider not delivered');
+   if(request.completedAt<=request.pickedUpAt||boardedQueueCount!==1)throw Error('incorrect per-rider timing');
+   if(!queue.includes(excess)||!queue.includes(reverse)||!queue.includes(far))throw Error('capacity, wrong-way or far-away request incorrectly picked up');
+   if(assigned.pickedUpAt!=null||car.pickupQueue[0]!==assigned)throw Error('stole road-assigned request');
+   if(train.nextStop!==(${direction}>0?'park':'central-return'))throw Error('extra dwell skipped scheduled station or reversed train');
+ `);
+}
+console.log('PASS: flexible pickups/dropoffs in both directions, 60-seat limit, per-rider metrics, distant/wrong-way exclusion and preservation of road assignments.');
