@@ -495,10 +495,10 @@ console.log('PASS: gridlock breakdown separates public, private, response and de
    if(!dijkstra(CENTRAL_NODE,parkRide.accessId)||!dijkstra(parkRide.accessId,CENTRAL_NODE))throw Error('park-and-ride has no road access');
    if(railCrossings.length<5)throw Error('missing rail crossings');
    for(let i=0;i<80;i++)railWaiting.get(parkRide.name).push({id:'park-'+i});
-   scheduleTrain({count:100});tickTrains();
+   startTrain({count:100});tickTrains();
    const train=trains[0];
    if(train.riders.length!==60)throw Error('incoming train capacity wrong');
-   let centralDrop=false,parkDrop=false,returned=false,sawGate=false;
+   let centralDrop=false,parkDrop=false,passedPark=false,sawGate=false;
    for(let i=0;i<5000&&trains.length;i++) {
      simElapsed+=SIM_MIN_PER_TICK;tickTrains();
      if(train.riders.length>60)throw Error('train exceeded capacity');
@@ -507,9 +507,9 @@ console.log('PASS: gridlock breakdown separates public, private, response and de
      if(train.state==='dwelling'&&train.nextStop==='park'){
        parkDrop=true;if(train.riders.length!==60)throw Error('terminal boarding did not fill available seats');
      }
-     if(train.direction<0)returned=true;
+     if(train.direction!==1)throw Error('through train reversed');if(train.distance>parkRailDistance+100)passedPark=true;
    }
-   if(!centralDrop||!parkDrop||!returned||!sawGate||trains.length||railBlockedEdges.size)throw Error('incomplete train roundtrip or gate cleanup');
+   if(!centralDrop||!parkDrop||!passedPark||!sawGate||trains.length||railBlockedEdges.size)throw Error('incomplete through service or gate cleanup');
    if(railWaiting.get(parkRide.name).length!==20)throw Error('excess passengers must remain waiting');
    if(queue.filter(r=>r.from===station).length!==40||queue.filter(r=>r.from===parkRide).length!==20)throw Error('alighting riders not handed to fleet');
    const crossing=railCrossings.find(c=>c.distance>centralRailDistance+200&&c.distance<railLength-200);
@@ -525,14 +525,14 @@ console.log('PASS: gridlock breakdown separates public, private, response and de
  `);
  elements.get('reset').click();assert.equal(run('trains.length+trainJobs.length+railBlockedEdges.size+[...railWaiting.values()].reduce((n,a)=>n+a.length,0)'),0);
 }
-console.log('PASS: corner station, 75-degree approach, road-connected terminal, 60-person train, both station transfers, capacity overflow, return service and full-length crossing protection.');
+console.log('PASS: corner station, 75-degree approach, road-connected terminal, 60-person train, both station transfers, capacity overflow, through service and full-length crossing protection.');
 for(const direction of [1,-1]) {
  const {run}=boot(1209);
  run(`
    dbg=()=>{};cars.length=0;queue.length=0;
-   const candidates=BUILDINGS.map(b=>({b,stop:buildingRailStop(b)})).filter(x=>x.stop&&x.stop.distance>centralRailDistance+CELL&&x.stop.distance<railLength-CELL).sort((a,b)=>a.stop.distance-b.stop.distance);
+   const candidates=BUILDINGS.map(b=>({b,stop:buildingRailStop(b)})).filter(x=>x.stop&&x.stop.distance>centralRailDistance+CELL&&x.stop.distance<parkRailDistance-CELL).sort((a,b)=>a.stop.distance-b.stop.distance);
    const from=${direction}>0?candidates[0]:candidates.at(-1),to=${direction}>0?candidates.at(-1):candidates[0];
-   const train={id:'flex-test',direction:${direction},state:'moving',nextStop:${direction}>0?'park':'central-return',riders:Array.from({length:59},()=>({exitAt:'metro'}))};
+   const train={id:'flex-test',direction:${direction},state:'moving',nextStop:${direction}>0?'park':'central-westbound',riders:Array.from({length:59},()=>({exitAt:'metro'}))};
    const pickup=localStopDistance(train,from.stop.distance);
    train.distance=pickup-(${direction})*CELL*.4;trains.push(train);
    const request={id:70001,requestedAt:0,from:from.b,to:to.b,pickupId:from.b.accessId,dropoffId:to.b.accessId};
@@ -545,7 +545,36 @@ for(const direction of [1,-1]) {
    if(request.completedAt<=request.pickedUpAt||boardedQueueCount!==1)throw Error('incorrect per-rider timing');
    if(!queue.includes(excess)||!queue.includes(reverse)||!queue.includes(far))throw Error('capacity, wrong-way or far-away request incorrectly picked up');
    if(assigned.pickedUpAt!=null||car.pickupQueue[0]!==assigned)throw Error('stole road-assigned request');
-   if(train.nextStop!==(${direction}>0?'park':'central-return'))throw Error('extra dwell skipped scheduled station or reversed train');
+   if(train.nextStop!==(${direction}>0?'park':'central-westbound'))throw Error('extra dwell skipped scheduled station or reversed train');
  `);
 }
 console.log('PASS: flexible pickups/dropoffs in both directions, 60-seat limit, per-rider metrics, distant/wrong-way exclusion and preservation of road assignments.');
+{
+ const {run}=boot(2345);
+ run(`
+   dbg=()=>{};cars.length=0;nextLocalTrainStop=()=>null;
+   scheduleTrain({count:12});
+   if(trainJobs.length!==2)throw Error('scheduled frequency did not double');
+   tickTrains();
+   if(trains.length!==2||!trains.some(t=>t.direction===1)||!trains.some(t=>t.direction===-1))throw Error('missing opposing service');
+   const east=trains.find(t=>t.direction===1),west=trains.find(t=>t.direction===-1),visits=new Map([[east,[]],[west,[]]]);
+   const end=railPoints.at(-1);
+   if(end[0]>=worldBounds[0]&&end[0]<=worldBounds[2]&&end[1]>=worldBounds[1]&&end[1]<=worldBounds[3])throw Error('rail extension ends inside map');
+   if(parkRailDistance>=railLength)throw Error('park still terminal');
+   for(let i=0;i<5000&&trains.length;i++) {
+     simElapsed+=SIM_MIN_PER_TICK;tickTrains();
+     for(const t of [east,west]) {
+       if(t.direction!==(t===east?1:-1))throw Error('train reversed');
+       const stops=visits.get(t);
+       if(t.state==='dwelling'&&stops.at(-1)!==t.nextStop)stops.push(t.nextStop);
+       if(t.riders.length>60)throw Error('train over capacity');
+     }
+   }
+   if(trains.length||railBlockedEdges.size)throw Error('through trains/gates failed to clear');
+   if(visits.get(east).join(',')!=='central,park'||visits.get(west).join(',')!=='park,central-westbound')throw Error('wrong station service order');
+   if(east.distance<=railLength||west.distance>=0)throw Error('train left via wrong map end');
+   const a=trainPoint(east,centralRailDistance+200),b=trainPoint(west,centralRailDistance+200);
+   if(Math.abs(Math.hypot(a.x-b.x,a.y-b.y)-24)>1e-8)throw Error('opposing services not separated');
+ `);
+}
+console.log('PASS: doubled bidirectional services, both station orders, no reversal, opposite map exits, parallel tracks and crossing cleanup.');

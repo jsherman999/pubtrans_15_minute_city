@@ -189,7 +189,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
   <div class="guide-body">
     <p>Explore how a shared autonomous transport fleet serves a compact city and its surrounding neighborhoods. Change demand, fleet sizes, ride sharing and human-driven traffic, then watch how trips, queues and road pressure respond.</p>
     <h3>The world and its riders</h3>
-    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then return off-map. Riders transfer to the road fleet; outbound passengers board at the platforms. Trains also make 30-second extra stops for unassigned requests when both buildings are within one block of the tracks and the destination is ahead along the line. These riders share the 60 seats and count toward normal ride and queue averages. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
+    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then continue off the opposite end of the map. Each scheduled service sends a train from both directions, doubling service frequency. Opposing trains use parallel tracks in the same rail corridor. Riders transfer to the road fleet; outbound passengers board at the platforms. Trains also make 30-second extra stops for unassigned requests when both buildings are within one block of the tracks and the destination is ahead along the line. These riders share the 60 seats and count toward normal ride and queue averages. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
     <h3>Getting around the app</h3>
     <p>Scroll through the regional, center and neighborhood maps, or use the map shortcuts. They show the same simulation at different scales. Tap an active vehicle for Driver POV. Auto runs scheduled demand; Interactive lets you choose buildings and inspect a trip’s route. Use Pause or Reset day as needed. Playback speed advances everything together—it does not make trips shorter in simulated minutes.</p>
     <h3>Dispatch, queues and ride sharing</h3>
@@ -2526,12 +2526,12 @@ function render() {
 }
 const trains=[],trainJobs=[];
 const railWaiting=new Map([["Central Stn",[]],["Juniper Park & Ride",[]]]);
-let railPoints=[],railSegments=[],railLength=0,centralRailDistance=0,trainSequence=0;
+let railPoints=[],railSegments=[],railLength=0,parkRailDistance=0,centralRailDistance=0,trainSequence=0;
 const RAIL_CAR_LENGTH=42,RAIL_CAR_SPACING=46,TRAIN_CAPACITY=60;
 let railCrossings=[];
 // Find a dedicated terminal alignment around the existing Juniper houses.
 function railAvoidHomes(start,end) {
-  const boxes=juniper.homes.map(b=>[b.x-b.size/2-16,b.y-b.size/2-16,b.x+b.size/2+16,b.y+b.size/2+16]);
+  const boxes=juniper.homes.map(b=>[b.x-b.size/2-26,b.y-b.size/2-26,b.x+b.size/2+26,b.y+b.size/2+26]);
   const points=[start,end,...boxes.flatMap(b=>[[b[0],b[1]],[b[0],b[3]],[b[2],b[1]],[b[2],b[3]]])];
   function clear(a,b) {
     return !boxes.some(box=>{
@@ -2565,11 +2565,15 @@ function setupRail() {
   const grid=(x,y)=>[PADDING+x*CELL,PADDING+y*CELL];
   railPoints=[approach,station,grid(1.5,.5),grid(2.5,1.5),grid(4.5,1.5),grid(5.5,2.5),grid(4.5,3.5),grid(3.5,4.5),grid(4.5,5.5),grid(4.5,6.4),grid(6.4,6.4),[parkRide.x,parkRide.y]];
   railPoints.splice(-2,2,...railAvoidHomes(railPoints.at(-2),railPoints.at(-1)));
+  const last=railPoints.at(-1),previous=railPoints.at(-2),angle=Math.atan2(last[1]-previous[1],last[0]-previous[0]);
+  const extension=Math.max(worldBounds[2]-worldBounds[0],worldBounds[3]-worldBounds[1])*1.5;
+  railPoints.push([last[0]+Math.cos(angle)*extension,last[1]+Math.sin(angle)*extension]);
   railLength=0;railSegments=[];
   for(let i=1;i<railPoints.length;i++) {
     const a=railPoints[i-1],b=railPoints[i],length=Math.hypot(b[0]-a[0],b[1]-a[1]);
     railSegments.push({a,b,length,start:railLength});railLength+=length;
     if(i===1)centralRailDistance=railLength;
+    if(i===railPoints.length-2)parkRailDistance=railLength;
   }
   railCrossings=[];
   for(const [key,edge] of Object.entries(edges)) {
@@ -2588,21 +2592,26 @@ function railPoint(distance) {
   const t=(distance-seg.start)/seg.length;
   return {x:seg.a[0]+(seg.b[0]-seg.a[0])*t,y:seg.a[1]+(seg.b[1]-seg.a[1])*t,heading:Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0])};
 }
+function trainPoint(train,distance) {
+  const p=railPoint(distance),offset=train.direction*12;
+  return {...p,x:p.x-Math.sin(p.heading)*offset,y:p.y+Math.cos(p.heading)*offset};
+}
 function scheduleTrain(evt) {
-  trainJobs.push(evt);
-  dbg("TRAIN","Train scheduled · other metro → Central Stn → Juniper Park & Ride → other metro · capacity 60");
+  trainJobs.push({...evt,direction:1},{...evt,direction:-1});
+  dbg("TRAIN","Two through trains scheduled, one from each metro · Central Stn ↔ Juniper Park & Ride · 60 seats each");
 }
 function startTrain(evt) {
   // Keep the scheduled central arrivals; fill remaining space with terminal riders.
   const central=Math.min(40,evt.count),park=Math.min(TRAIN_CAPACITY-central,20);
-  const train={id:"train-"+(++trainSequence),distance:-150,direction:1,state:"moving",nextStop:"central",riders:[],dwellUntil:0};
+  const direction=evt.direction || 1;
+  const train={id:"train-"+(++trainSequence),distance:direction>0?-150:railLength+150,direction,state:"moving",nextStop:direction>0?"central":"park",riders:[],dwellUntil:0};
   for(let i=0;i<central+park;i++)train.riders.push({exitAt:i<central?"central":"park"});
   trains.push(train);
   fireEvent({pickup:"residential",dropoff:parkRide.name,count:8,label:"Passengers heading to Juniper Park & Ride"});
-  dbg("TRAIN",train.id+" inbound · "+train.riders.length+"/60 aboard; 8 park-and-ride connections requested");
+  dbg("TRAIN",train.id+(direction>0?" southeast-bound · ":" northwest-bound · ")+train.riders.length+"/60 aboard; 8 park-and-ride connections requested");
 }
 function railTransfer(train,building,boarding,count) {
-  const point=railPoint(train.distance-train.direction*RAIL_CAR_SPACING),home=buildingCenter(building);
+  const point=trainPoint(train,train.distance-train.direction*RAIL_CAR_SPACING),home=buildingCenter(building);
   for(let i=0;i<count;i++)passengerTransfers.push({from:boarding?home:[point.x,point.y],to:boarding?[point.x,point.y]:home,start:Date.now(),duration:400/speedMult,boarding,car:train});
 }
 function trainStop(train,stop) {
@@ -2613,9 +2622,9 @@ function trainStop(train,stop) {
     fireEvent({pickup:building.name,dropoff:"residential",count:drop,label:train.id+" · "+drop+" passengers arrive at "+building.name});
     railTransfer(train,building,false,drop);
   }
-  // Board outbound riders on the return leg, or at the turnaround terminal.
+  // Either through service can take waiting passengers onward to its metro.
   let boarded=0;
-  if(stop==="park"||train.direction<0) {
+  {
     const waiting=railWaiting.get(building.name);
     while(waiting.length&&train.riders.length<TRAIN_CAPACITY){train.riders.push({...waiting.shift(),exitAt:"metro"});boarded++;}
     railTransfer(train,building,true,boarded);
@@ -2630,7 +2639,7 @@ function buildingRailStop(building) {
   if(railBuildingStops.has(building))return railBuildingStops.get(building);
   const [x,y]=buildingCenter(building);let best=null;
   for(const segment of railSegments) {
-    if(segment.start<centralRailDistance-.001)continue;
+    if(segment.start<centralRailDistance-.001 || segment.start>=parkRailDistance-.001)continue;
     const dx=segment.b[0]-segment.a[0],dy=segment.b[1]-segment.a[1];
     const t=Math.max(0,Math.min(1,((x-segment.a[0])*dx+(y-segment.a[1])*dy)/(segment.length**2)));
     const gap=Math.hypot(x-segment.a[0]-t*dx,y-segment.a[1]-t*dy);
@@ -2639,11 +2648,11 @@ function buildingRailStop(building) {
   const result=best&&best.gap<=CELL?best:null;railBuildingStops.set(building,result);return result;
 }
 function localStopDistance(train,projection) {
-  return train.direction>0 ? Math.min(railLength,Math.max(centralRailDistance+RAIL_CAR_SPACING,projection+RAIL_CAR_SPACING)) :
-    Math.min(railLength-2*RAIL_CAR_SPACING,Math.max(centralRailDistance-RAIL_CAR_SPACING,projection-RAIL_CAR_SPACING));
+  return train.direction>0 ? Math.min(parkRailDistance+RAIL_CAR_SPACING,Math.max(centralRailDistance+RAIL_CAR_SPACING,projection+RAIL_CAR_SPACING)) :
+    Math.min(parkRailDistance-RAIL_CAR_SPACING,Math.max(centralRailDistance-RAIL_CAR_SPACING,projection-RAIL_CAR_SPACING));
 }
 function nextLocalTrainStop(train) {
-  if(!["park","central-return"].includes(train.nextStop))return null;
+  if(!["park","central-westbound"].includes(train.nextStop))return null;
   let best=null;
   const consider=distance=>{const ahead=(distance-train.distance)*train.direction;if(ahead>=-.001&&(!best||ahead<best.ahead))best={distance,ahead};};
   for(const rider of train.riders)if(rider.request)consider(rider.dropDistance);
@@ -2681,16 +2690,16 @@ function serveLocalTrainStop(train,distance) {
   }
 }
 function tickTrains() {
-  if(!trains.length&&trainJobs.length)startTrain(trainJobs.shift());
+  while(trainJobs.length)startTrain(trainJobs.shift());
   for(const train of trains) {
     if(train.state==="dwelling") {
       if(simElapsed<train.dwellUntil)continue;
       if(train.dwellType==="local") { /* Continue the same leg after a flexible stop. */ }
-      else if(train.nextStop==="park") {train.direction=-1;train.distance-=2*RAIL_CAR_SPACING;train.nextStop="central-return";}
+      else if(train.nextStop==="park")train.nextStop=train.direction>0?"metro":"central-westbound";
       else train.nextStop=train.direction>0?"park":"metro";
       train.state="moving";dbg("TRAIN",train.id+" departing for "+train.nextStop);
     }
-    const target=train.nextStop==="central"?centralRailDistance+RAIL_CAR_SPACING:train.nextStop==="park"?railLength:train.nextStop==="central-return"?centralRailDistance-RAIL_CAR_SPACING:-200;
+    const target=train.nextStop==="central"?centralRailDistance+RAIL_CAR_SPACING:train.nextStop==="park"?parkRailDistance+train.direction*RAIL_CAR_SPACING:train.nextStop==="central-westbound"?centralRailDistance-RAIL_CAR_SPACING:train.direction>0?railLength+200:-200;
     const step=50*1000/60*SIM_MIN_PER_TICK/METERS_PER_CELL*CELL;
     const local=nextLocalTrainStop(train);
     if(local && local.ahead<=step && (target-local.distance)*train.direction>=-.001) {
@@ -2719,14 +2728,14 @@ function tickTrains() {
 }
 function drawRailFPV(cam) {
   fpvCtx.strokeStyle="#94a3b8";fpvCtx.lineWidth=2;
-  for(const seg of railSegments)for(const side of [-5,5]) {
+  for(const seg of railSegments)for(const side of [-18,-6,6,18]) {
     const angle=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]),x=-Math.sin(angle)*side,y=Math.cos(angle)*side;
     strokePolyWorld([[seg.a[0]+x,seg.a[1]+y,.2],[seg.b[0]+x,seg.b[1]+y,.2]],cam);
   }
 }
 function drawTrainFPV(cam) {
   const coaches=[];
-  for(const train of trains)for(let i=0;i<3;i++)coaches.push(railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING));
+  for(const train of trains)for(let i=0;i<3;i++)coaches.push(trainPoint(train,train.distance-train.direction*i*RAIL_CAR_SPACING));
   coaches.sort((a,b)=>Math.hypot(b.x-cam.x,b.y-cam.y)-Math.hypot(a.x-cam.x,a.y-cam.y));
   for(const p of coaches) {
     if(Math.hypot(p.x-cam.x,p.y-cam.y)>FPV_FAR+50)continue;
@@ -2740,7 +2749,7 @@ function drawTrainFPV(cam) {
 }
 function drawRail() {
   ctx.save();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;
-  for(const offset of [-6,6]) {
+  for(const offset of [-18,-6,6,18]) {
     ctx.beginPath();
     for(const [i,seg] of railSegments.entries()) {
       const angle=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]),dx=-Math.sin(angle)*offset,dy=Math.cos(angle)*offset;
@@ -2748,15 +2757,15 @@ function drawRail() {
       ctx.lineTo(seg.b[0]+dx,seg.b[1]+dy);
     }ctx.stroke();
   }
-  ctx.beginPath();for(let d=0;d<railLength;d+=18){const p=railPoint(d),dx=-Math.sin(p.heading)*10,dy=Math.cos(p.heading)*10;ctx.moveTo(p.x-dx,p.y-dy);ctx.lineTo(p.x+dx,p.y+dy);}ctx.stroke();ctx.restore();
+  ctx.beginPath();for(let d=0;d<railLength;d+=18){const p=railPoint(d),dx=-Math.sin(p.heading)*22,dy=Math.cos(p.heading)*22;ctx.moveTo(p.x-dx,p.y-dy);ctx.lineTo(p.x+dx,p.y+dy);}ctx.stroke();ctx.restore();
 }
 function drawTrains() {
   for(const train of trains) {
     ctx.strokeStyle="#64748b";ctx.lineWidth=4;ctx.beginPath();
-    for(let i=0;i<3;i++){const p=railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.stroke();
+    for(let i=0;i<3;i++){const p=trainPoint(train,train.distance-train.direction*i*RAIL_CAR_SPACING);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.stroke();
   }
   for(const train of trains)for(let i=0;i<3;i++) {
-    const p=railPoint(train.distance-train.direction*i*RAIL_CAR_SPACING);
+    const p=trainPoint(train,train.distance-train.direction*i*RAIL_CAR_SPACING);
     ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.fillStyle="#f8fafc";ctx.strokeStyle="#2563eb";ctx.lineWidth=3;
     ctx.fillRect(-21,-8,42,16);ctx.strokeRect(-21,-8,42,16);ctx.fillStyle="#2563eb";ctx.fillRect(-14,-5,27,4);
     ctx.fillStyle="#0f172a";ctx.font="bold 8px sans-serif";ctx.textAlign="center";ctx.fillText(i===1?train.riders.length+"/60":"RAIL",0,6);ctx.restore();
@@ -3961,7 +3970,7 @@ function updateHUD() {
   document.getElementById("avg-queue").textContent=averageQueue==null ? "—" : averageQueue.toFixed(1);
   document.getElementById("avg-trip").textContent = completedCount ?
     (completedRideMinutes/completedCount).toFixed(1) : "—";
-  document.getElementById("train-aboard").textContent=trains.length?trains.map(t=>t.riders.length+"/60 · "+(t.state==="dwelling"?(t.dwellType==="local"?"local stop":"at platform"):t.direction>0?"inbound":"outbound")).join("; "):"No train";
+  document.getElementById("train-aboard").textContent=trains.length?trains.map(t=>t.riders.length+"/60 · "+(t.state==="dwelling"?(t.dwellType==="local"?"local stop":"at platform"):t.direction>0?"SE-bound":"NW-bound")).join("; "):"No train";
   document.getElementById("rail-waiting").textContent="Central "+railWaiting.get("Central Stn").length+" · P&R "+railWaiting.get(parkRide.name).length;
   const pressure=gridlockBreakdown(),gridlock=pressure.total;
   gridlockPeak=Math.max(gridlockPeak,gridlock);
@@ -4380,7 +4389,7 @@ function addMap(id,title,description,bounds,existing) {
  const view={id,canvas:cv,scale,tx:390-(bounds[0]+bounds[2])/2*scale,ty:390-(bounds[1]+bounds[3])/2*scale};
  mapViews.push(view);cv.addEventListener("click",e=>handleMapClick(e,view));
 }
-addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. Three-car trains carry up to 60 passengers between other metros, corner Central Station and Juniper Park & Ride. Red crossing gates stop road traffic until the train clears.",worldBounds);
+addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. Three-car trains carry up to 60 passengers in both directions between other metros, corner Central Station and Juniper Park & Ride, continuing off-map beyond either station. Red crossing gates stop road traffic until the train clears.",worldBounds);
 addMap("center","15 minute city center","6 × 6 blocks · 600 × 600 m · jobs, schools, groceries and Central Station. Tap buildings in Interactive mode to plan a trip across any map.",[0,0,780,780],canvas);
 for(const [i,d] of developments.entries()) addMap("district-"+i,d.name,
  `${d.homes.length} residences · ${d.gapMeters===0?"directly connected":(d.gapMeters/1609).toFixed(2)+" mi from the city edge"} · winding boulevards and four cul-de-sacs.`,d.bounds);
