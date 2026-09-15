@@ -556,6 +556,10 @@ console.log('PASS: flexible pickups/dropoffs in both directions, 60-seat limit, 
    scheduleTrain({count:12});
    if(trainJobs.length!==2)throw Error('scheduled frequency did not double');
    tickTrains();
+   if(trains.length!==1||trains[0].direction!==1||trainJobs.length!==1)throw Error('opposing services launched together');
+   simElapsed=14.95;tickTrains();
+   if(trains.length!==1)throw Error('opposing service launched early');
+   simElapsed=15;tickTrains();
    if(trains.length!==2||!trains.some(t=>t.direction===1)||!trains.some(t=>t.direction===-1))throw Error('missing opposing service');
    const east=trains.find(t=>t.direction===1),west=trains.find(t=>t.direction===-1),visits=new Map([[east,[]],[west,[]]]);
    const end=railPoints.at(-1);
@@ -602,3 +606,17 @@ console.log('PASS: doubled bidirectional services, both station orders, no rever
  `);
 }
 console.log('PASS: curved development connectors, outermost interchange, directed ramps, off-map interstate portals, retained traffic target and departures after slider reduction.');
+
+{
+ const {run,elements}=boot(913);
+ for(let restart=0;restart<2;restart++) {
+   run(`
+     for(let i=0;i<29;i++){advanceSimulationTime(SIM_MIN_PER_TICK);tickEvents();tickTrains();}
+     if(trains.length)throw Error('first train started before startup delay');
+     for(let i=0;i<2;i++){advanceSimulationTime(SIM_MIN_PER_TICK);tickEvents();tickTrains();}
+     if(trains.length!==1||trains[0].direction!==1||trainJobs.length!==1)throw Error('startup train missing or simultaneous');
+   `);
+   elements.get('reset').click();
+ }
+}
+console.log('PASS: first service after three seconds of 1× playback, repeated after reset; opposing train delayed 15 simulated minutes.');

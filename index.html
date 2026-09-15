@@ -2309,7 +2309,7 @@ const EVENT_BANNER_TICKS = 70;
 const eventSchedule = [
   { minute: 7 * 60 + 45, label: "Hillside school day starts — 10 inbound students",
     pickup: "residential", dropoff: "Hillside", count: 10 },
-  { minute: 9 * 60 + 0, label: "Train arrives at Central Stn — 12 passengers disembark",
+  { minute: DAY_START + 1.5, label: "First train service — 12 Central Stn arrivals",
     pickup: "Central Stn", dropoff: "residential", count: 12 },
   { minute: 11 * 60 + 30, label: "Train arrives at Central Stn — 10 passengers disembark",
     pickup: "Central Stn", dropoff: "residential", count: 10 },
@@ -2686,8 +2686,9 @@ function trainPoint(train,distance) {
   return {...p,x:p.x-Math.sin(p.heading)*offset,y:p.y+Math.cos(p.heading)*offset};
 }
 function scheduleTrain(evt) {
-  trainJobs.push({...evt,direction:1},{...evt,direction:-1});
-  dbg("TRAIN","Two through trains scheduled, one from each metro · Central Stn ↔ Juniper Park & Ride · 60 seats each");
+  trainJobs.push({...evt,direction:1,dueAt:simElapsed},{...evt,direction:-1,dueAt:simElapsed+15});
+  trainJobs.sort((a,b)=>a.dueAt-b.dueAt);
+  dbg("TRAIN","Through services scheduled · southeast-bound now, northwest-bound in 15 sim minutes · 60 seats each");
 }
 function startTrain(evt) {
   // Keep the scheduled central arrivals; fill remaining space with terminal riders.
@@ -2779,7 +2780,7 @@ function serveLocalTrainStop(train,distance) {
   }
 }
 function tickTrains() {
-  while(trainJobs.length)startTrain(trainJobs.shift());
+  while(trainJobs.length && trainJobs[0].dueAt<=simElapsed)startTrain(trainJobs.shift());
   for(const train of trains) {
     if(train.state==="dwelling") {
       if(simElapsed<train.dwellUntil)continue;
