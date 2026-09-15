@@ -196,7 +196,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <p>Sedans carry four people, shuttles eight, and large buses twenty. Buses connect their assigned neighborhood with the center. Requests wait until a suitable vehicle can serve them. More demand or longer trips can leave vehicles busy and queues growing. Ride sharing lets shuttles and buses add compatible on-the-way pickups while respecting seats and existing stops; extra pickups can also delay passengers already aboard.</p>
     <p><strong>Avg ride</strong> measures each completed passenger’s time from pickup to destination. <strong>Avg queue</strong> combines finished waits with the growing waits of riders still awaiting pickup, including those assigned a vehicle. Both averages run from Reset day.</p>
     <h3>Traffic and disruptions</h3>
-    <p>Vehicles follow road speeds, one-way restrictions, stop signs and lights, and leave space behind traffic ahead. Jaywalkers cause braking; parked trucks can prompt a detour. Lime-green cars marked <strong>H</strong> are persistent human-driven traffic: they travel to a destination, occupy their lane and can hold up the fleet. Their slider starts at the old baseline of about five arrivals per simulated hour; increasing it adds traffic rather than transit passengers.</p>
+    <p>Vehicles follow road speeds, one-way restrictions, stop signs and lights, and leave space behind traffic ahead. Jaywalkers cause braking; parked trucks can prompt a detour. Lime-green cars marked <strong>H</strong> are persistent human-driven traffic: they travel to a destination, occupy their lane and can hold up the fleet. Their slider starts at the old baseline of about five arrivals per simulated hour; each step above baseline adds five cars through interstate ramps at the farthest neighborhood. Those cars stay and make repeat local trips until you lower the slider, when excess cars leave via the ramps.</p>
     <p>Rare police and fire incidents dispatch blue police sedans or red/pink fire crews. They block their arrival direction for five or ten simulated minutes. <strong>Trigger Emergency</strong> starts an incident immediately. Occupied transit vehicles can also break down; a white recovery vehicle transfers their passengers and continues their trips. The debug stream records these decisions and events, with emergency messages in red.</p>
     <h3>What “Gridlock” means here</h3>
     <p>The score is a congestion-pressure indicator, not the percentage of traffic stopped. It counts vehicle reservations on planned road segments plus obstructed segments, divided by the number of road segments. Longer routes and more vehicles can raise it. The overall bar compares the current score with the highest reached since Reset day. The chart below separates public fleet, human-driven traffic, emergency/recovery vehicles and road obstructions; its bars show each factor’s share. Read it alongside ride times, queue times and the count of vehicles delayed behind traffic.</p>
@@ -274,7 +274,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="btn-row"><button id="pause">Pause</button><button id="reset">Reset day</button></div>
       <div class="btn-row"><button id="trigger-emergency">Trigger Emergency</button></div>
       <p class="hint small" id="emergency-status">No active emergencies.</p>
-      <p class="hint small" data-help-anchor="#auto-controls label">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
+      <p class="hint small" data-help-anchor="#auto-controls label">Road speeds: neighborhoods 20 km/h · center 25 km/h · connectors 35 km/h · interstate 100 km/h · ramps 30 km/h. Boarding: 3 seconds/person. Playback speed changes viewing speed only.</p>
       <p class="hint small" style="margin-top:8px" data-help-anchor="#cockpit-section h3">Click any active car on the map to spectate it (its POV opens in the Driver POV pane below; speed drops to 1×).</p>
     </section>
 
@@ -339,7 +339,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       </div>
       <p class="hint small" id="bus-assignments"></p>
       <div class="row"><label for="human-traffic">Human-driven traffic</label><input type="range" id="human-traffic" min="1" max="30" step="1" value="1"><span id="human-traffic-value">1×</span></div>
-      <p class="hint small" id="human-traffic-hint" data-help-anchor="label[for=human-traffic]">1× is the original baseline of about five arrivals per simulated hour. Increase the slider to add persistent human-driven traffic. Existing cars finish their routes when reduced.</p>
+      <p class="hint small" id="human-traffic-hint" data-help-anchor="label[for=human-traffic]">1× keeps baseline traffic at about five arrivals per simulated hour. Each step above 1× adds five cars, arriving gradually via the interstate. Added cars stay in the metro and make repeat trips. Lower the slider to send excess cars back out via the ramps after their current trip.</p>
       <p class="hint small" id="human-traffic-status"></p>
       <div class="row"><label for="ride-sharing">Ride sharing</label><input type="range" id="ride-sharing" min="0" max="100" step="10" value="100"><span id="ride-sharing-value">100%</span></div>
       <div class="row"><span>On-the-way pickups assigned</span><span id="shared-pickups">0</span></div>
@@ -498,9 +498,14 @@ for (let side=0; side<5; side++) {
   const gate = [nodeId(3,0),nodeId(6,3),nodeId(3,6),nodeId(0,3),nodeId(6,6)][side];
   const gap = gapMeters/METERS_PER_CELL*CELL;
   const originV = gap+CELL*.6;
-  const steps=Math.max(1,Math.ceil((gap+CELL*.6)/CELL));
-  const entry = roadPath(gate, Array.from({length:steps},(_,i)=>
-    transform(offset*(i+1)/steps,originV*(i+1)/steps)),35);
+  const steps=Math.max(8,Math.ceil((gap+CELL*.6)/CELL)*3);
+  const gateXY=nodeXY(gate),entryXY=transform(offset,originV);
+  const dx=entryXY[0]-gateXY[0],dy=entryXY[1]-gateXY[1],length=Math.hypot(dx,dy);
+  const bend=Math.min(CELL*.45,length*.12)*(side%2?1:-1);
+  const entry = roadPath(gate,Array.from({length:steps},(_,i)=>{
+    const t=(i+1)/steps,curve=Math.sin(Math.PI*t)*bend;
+    return [gateXY[0]+dx*t-dy/length*curve,gateXY[1]+dy*t+dx/length*curve];
+  }),35);
   const local = (u,v) => transform(offset+u,originV+v);
   const dev = { name, gapMeters, gate, entry, culDeSacs:[], homes:[], points:[nodeXY(entry)] };
   // Two winding boulevards, each with two short cul-de-sacs and five homes.
@@ -542,6 +547,36 @@ const parkAccess=roadPath(parkRoadEnd,[[parkXY[0]+CELL*.8,parkXY[1]+CELL*.8]],20
 const parkRide={name:"Juniper Park & Ride",type:"station",color:"#c00000",x:nodeXY(parkAccess)[0]+36,y:nodeXY(parkAccess)[1]+36,size:55,accessId:parkAccess,development:4};
 BUILDINGS.push(parkRide);buildingsByType.station.push(parkRide);
 juniper.bounds[2]=Math.max(juniper.bounds[2],parkRide.x+90);juniper.bounds[3]=Math.max(juniper.bounds[3],parkRide.y+90);
+// A grade-separated interstate crosses the outermost neighborhood. Its only
+// connections to local streets are the curved, directed interchange ramps.
+const highwayNodes=new Set(),highwayEntrances=[],highwayExits=[];
+const highwayDevelopment=developments.reduce((best,d)=>{
+  const a=nodeXY(best.entry),b=nodeXY(d.entry);
+  return Math.hypot(b[0]-390,b[1]-390)>Math.hypot(a[0]-390,a[1]-390)?d:best;
+});
+const highwayCenter=nodeXY(highwayDevelopment.entry),hx=highwayCenter[0]-390,hy=highwayCenter[1]-390,hn=Math.hypot(hx,hy);
+const highwayTangent=[-hy/hn,hx/hn],highwayOut=[hx/hn,hy/hn];
+const metroPoints=[...extraNodes.values()];
+const highwayReach=Math.max(...metroPoints.map(p=>Math.hypot(p[0]-highwayCenter[0],p[1]-highwayCenter[1])))+CELL*8;
+function highwayPoint(t,lane){return [highwayCenter[0]+highwayTangent[0]*t+highwayOut[0]*(CELL*.35+lane),highwayCenter[1]+highwayTangent[1]*t+highwayOut[1]*(CELL*.35+lane)];}
+function highwayNode(t,lane){const n=roadNode(...highwayPoint(t,lane));highwayNodes.add(n);return n;}
+function directedRoad(a,b,kind,speed){addEdge(a,b);const e=edges[edgeKey(a,b)];e.oneWay=e.a===a?"ab":"ba";e.kind=kind;e.speedKph=speed;}
+function ramp(a,control,end){
+  const before=new Set(Object.keys(edges));const result=roadPath(a,[control,end],30);
+  for(const [key,e] of Object.entries(edges))if(!before.has(key)){e.oneWay="ab";e.kind="ramp";}
+  return result;
+}
+for(const direction of [1,-1]) {
+  const lane=direction*12;
+  const nodes=[-highwayReach,-CELL*.7,CELL*.7,highwayReach].map(t=>highwayNode(t*direction,lane));
+  for(let i=1;i<nodes.length;i++)directedRoad(nodes[i-1],nodes[i],"interstate",100);
+  highwayEntrances.push(nodes[0]);highwayExits.push(nodes[3]);
+  for(const n of nodes.slice(1,3)){const [x,y]=nodeXY(n);highwayDevelopment.bounds[0]=Math.min(highwayDevelopment.bounds[0],x-70);highwayDevelopment.bounds[1]=Math.min(highwayDevelopment.bounds[1],y-70);highwayDevelopment.bounds[2]=Math.max(highwayDevelopment.bounds[2],x+70);highwayDevelopment.bounds[3]=Math.max(highwayDevelopment.bounds[3],y+70);}
+  const off=ramp(nodes[1],highwayPoint(-direction*CELL*.35,lane-CELL*.25),[highwayCenter[0]+highwayOut[0]*5,highwayCenter[1]+highwayOut[1]*5]);
+  directedRoad(off,highwayDevelopment.entry,"ramp",30);
+  const on=ramp(highwayDevelopment.entry,highwayPoint(direction*CELL*.35,lane+CELL*.25),highwayPoint(direction*CELL*.7-direction*5,lane));
+  directedRoad(on,nodes[2],"ramp",30);
+}
 for (const e of Object.values(edges)) {
   e.speedKph=e.speedKph || 25;
   const a=nodeXY(e.a),b=nodeXY(e.b); e.length=Math.hypot(a[0]-b[0],a[1]-b[1])/CELL;
@@ -1567,7 +1602,7 @@ function stepCars(speedMult, filterCar = null) {
   for (const car of cars) {
     if (filterCar && car !== filterCar) continue;
     car._followingTraffic=false;
-    if (["idle","emergency_scene","vehicle_trouble","trouble_repair","response_done","recovery_wait","human_done"].includes(car.state)) continue;
+    if (["idle","emergency_scene","vehicle_trouble","trouble_repair","response_done","recovery_wait","human_done","human_local_wait"].includes(car.state)) continue;
     if((car.incident || car.rescueTarget) && !car.route)continue;
     if(car.route && car.routeIndex<car.route.edges.length) {
       const from=car.route.nodes[car.routeIndex],to=car.route.nodes[car.routeIndex+1];
@@ -1634,7 +1669,7 @@ function stepCars(speedMult, filterCar = null) {
     if (car._slowedTicks > 0) car._slowedTicks--;
     // Spend elapsed seconds along the actual road lengths and speed zones.
     let remainingSeconds = SIM_MIN_PER_TICK * 60 * speedMult;
-    let room=followingRoom(car,lanes,remainingSeconds*35/3.6);
+    let room=followingRoom(car,lanes,remainingSeconds*100/3.6);
     car._followingTraffic=Number.isFinite(room) && room<remainingSeconds*edges[car.route.edges[car.routeIndex]].speedKph/3.6*slowFactor;
     if(car._followingTraffic && !car._followingLogged)dbg("TRAFFIC",car.id+" slowing or waiting behind traffic");
     car._followingLogged=car._followingTraffic;
@@ -1725,9 +1760,15 @@ function advanceSegment(car) {
 
 function arriveAtRouteEnd(car) {
   if(car.kind==="human") {
-    if(railWaiting.has(car.destination.name))railWaiting.get(car.destination.name).push({id:car.id});
-    releaseAllClaims(car);car.route=null;car.state="human_done";
-    dbg("TRAFFIC",car.id+" reached "+car.destination.name+" · left the road");return;
+    releaseAllClaims(car);car.route=null;
+    if(car.exitingMetro) {
+      car.state="human_done";dbg("TRAFFIC",car.id+" left metro via interstate");
+    } else {
+      if(railWaiting.has(car.destination.name))railWaiting.get(car.destination.name).push({id:car.id});
+      car.state="human_local_wait";car.nextLocalTripAt=simElapsed+1;
+      dbg("TRAFFIC",car.id+" reached "+car.destination.name+(car.retainedTraffic&&!car.leaveMetro?" · staying in metro":" · preparing interstate departure"));
+    }
+    return;
   }
   if(car.incident) {arriveEmergency(car);return;}
   if(car.state==="recovery_outbound") {arriveRecovery(car);return;}
@@ -2196,16 +2237,16 @@ function resolveObstacle(car) {
 
 const HUMAN_BASE_INTERVAL=79.5*3*SIM_MIN_PER_TICK;
 let humanTrafficRate=1,humanSpawnCredit=0,humanCarSeq=0;
-function spawnHumanCar() {
+function spawnHumanCar(retained=false) {
   const candidates=BUILDINGS.filter(b=>b.type!=="emergency");
   for(let attempt=0;attempt<12;attempt++) {
-    const from=pick(candidates),to=pick(candidates);
-    if(from===to)continue;
+    const from={name:"Interstate",accessId:pick(highwayEntrances)},to=pick(candidates);
     const [x,y]=nodeXY(from.accessId);
     if(cars.some(c=>c.state!=="idle"&&Math.hypot(c.pos.x-x,c.pos.y-y)<CELL*.08))continue;
     const route=dijkstra(from.accessId,to.accessId);
     if(!route||!route.edges.length)continue;
     const car=makeCar("human","human-"+(++humanCarSeq));
+    car.retainedTraffic=retained;car.exitingMetro=false;
     car.nodeId=from.accessId;car.pos={x,y};car.destination=to;car.state="human_driving";
     claimRoute(car,route);setRoute(car,route);cars.push(car);
     dbg("TRAFFIC",car.id+" human-driven trip: "+from.name+" → "+to.name);
@@ -2213,11 +2254,28 @@ function spawnHumanCar() {
   }
   return null;
 }
+let retainedSpawnCredit=0;
+function retainedTrafficTarget(){return (humanTrafficRate-1)*5;}
+function routeHumanTrip(car,exit=false) {
+  const destination=exit?{name:"Interstate exit",accessId:pick(highwayExits)}:pick(BUILDINGS.filter(b=>b.type!=="emergency"&&b.accessId!==car.nodeId));
+  const route=dijkstra(car.nodeId,destination.accessId);
+  if(!route)return false;
+  releaseAllClaims(car);car.destination=destination;car.exitingMetro=exit;car.state="human_driving";
+  claimRoute(car,route);setRoute(car,route);
+  dbg("TRAFFIC",car.id+(exit?" leaving metro via interstate":" continuing local trip to "+destination.name));return true;
+}
 function tickHumanTraffic() {
-  humanSpawnCredit+=SIM_MIN_PER_TICK*humanTrafficRate/HUMAN_BASE_INTERVAL;
-  if(humanSpawnCredit>=1 && spawnHumanCar())humanSpawnCredit-=1;
-  // A blocked origin retries later without creating a large delayed burst.
+  // Preserve baseline arrivals; higher settings add a bounded resident traffic pool.
+  humanSpawnCredit+=SIM_MIN_PER_TICK/HUMAN_BASE_INTERVAL;
+  if(humanSpawnCredit>=1&&spawnHumanCar())humanSpawnCredit-=1;
   humanSpawnCredit=Math.min(humanSpawnCredit,1);
+  const pool=cars.filter(c=>c.kind==="human"&&c.retainedTraffic&&!c.exitingMetro);
+  const target=retainedTrafficTarget();
+  for(let i=0;i<pool.length;i++)pool[i].leaveMetro=i>=target;
+  retainedSpawnCredit+=SIM_MIN_PER_TICK*(humanTrafficRate-1)/HUMAN_BASE_INTERVAL;
+  if(pool.length<target&&retainedSpawnCredit>=1&&spawnHumanCar(true))retainedSpawnCredit-=1;
+  retainedSpawnCredit=Math.min(retainedSpawnCredit,1);
+  for(const car of cars)if(car.kind==="human"&&car.state==="human_local_wait"&&simElapsed>=car.nextLocalTripAt)routeHumanTrip(car,car.leaveMetro||!car.retainedTraffic);
 }
 document.getElementById("human-traffic").addEventListener("input",e=>{
   humanTrafficRate=Number(e.target.value);
@@ -2505,13 +2563,14 @@ function render() {
     ctx=view.canvas.getContext("2d"); viewScale=view.scale;
     ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,780,780);
     ctx.save();ctx.translate(view.tx,view.ty);ctx.scale(view.scale,view.scale);
-    drawStreets();drawCongestion();drawBuildings();drawRail();
+    drawStreets();drawCongestion();drawInterstateMarkings();drawBuildings();drawRail();
     if(mode==="interactive") drawInteractiveOverlay();
     drawOneWayArrows();drawIntersectionSignals();drawCars();drawObstacles();drawWaiting();drawTransfers();drawEmergencyScene();drawTrains();
     if(view.id==="region") {
       ctx.font=`bold ${12/view.scale}px sans-serif`;ctx.textAlign="center";ctx.fillStyle="#e2e8f0";
       for(const d of developments) ctx.fillText(d.name,(d.bounds[0]+d.bounds[2])/2,d.bounds[1]-12/view.scale);
       ctx.fillText("City center",390,820);
+      const interchange=highwayPoint(0,0);ctx.fillText("Interstate · ramps",interchange[0],interchange[1]-30/view.scale);
       const portal=railPoint((worldBounds[1]+60-railPoints[0][1])/Math.sin(75*Math.PI/180));ctx.fillText("Other metros ↖",portal.x,portal.y);
     }
     ctx.restore();
@@ -2894,13 +2953,20 @@ function drawEventBanner(c, width, height) {
   c.restore();
 }
 
+function drawInterstateMarkings() {
+  ctx.save();ctx.strokeStyle="#cbd5e1";ctx.lineWidth=1;ctx.setLineDash([12,16]);
+  for(const e of Object.values(edges))if(e.kind==="interstate") {
+    const a=nodeXY(e.a),b=nodeXY(e.b);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawStreets() {
   ctx.fillStyle="#252930";
   for(let r=0;r<BLOCKS;r++) for(let c=0;c<BLOCKS;c++) {
     const [x,y]=nodeXY(nodeId(c,r));ctx.fillRect(x+16,y+16,CELL-32,CELL-32);
   }
   ctx.fillStyle=COLORS.street;
-  for(const [id,point] of extraNodes) if(adj[id].length===1) {
+  for(const [id,point] of extraNodes) if(!highwayNodes.has(id)&&adj[id].length===1) {
     ctx.beginPath();ctx.arc(point[0],point[1],19,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#66705d";ctx.lineWidth=2;ctx.stroke();
   }
@@ -2909,6 +2975,7 @@ function drawStreets() {
   ctx.lineCap = "round";
   for (const k in edges) {
     const e = edges[k];
+    ctx.strokeStyle=e.kind==="interstate"?"#475569":e.kind==="ramp"?"#3b4656":COLORS.street;ctx.lineWidth=e.kind==="interstate"?20:14;
     const [ax, ay] = nodeXY(e.a);
     const [bx, by] = nodeXY(e.b);
     ctx.beginPath();
@@ -2994,7 +3061,7 @@ function drawCars() {
       continue;
     }
     let x = car.pos.x, y = car.pos.y;
-    if(["vehicle_trouble","trouble_repair"].includes(car.state))x+=10;
+    if(["vehicle_trouble","trouble_repair","human_local_wait"].includes(car.state))x+=10;
     if(car.state==="emergency_scene") {
       const slot=car.incident.responders.indexOf(car);
       x+=Math.cos(car.heading)*(slot*24);y+=Math.sin(car.heading)*(slot*24);
@@ -3986,7 +4053,7 @@ function updateHUD() {
     document.getElementById("pressure-"+key+"-bar").style.width=share+"%";
   }
   document.getElementById("traffic-following").textContent=cars.filter(c=>c._followingTraffic&&c.route).length+" vehicles slowed or waiting behind traffic.";
-  document.getElementById("human-traffic-status").textContent=Math.round(60/HUMAN_BASE_INTERVAL*humanTrafficRate)+" arrivals/hour · "+cars.filter(c=>c.kind==="human"&&c.state!=="human_done").length+" on road.";
+  document.getElementById("human-traffic-status").textContent=cars.filter(c=>c.kind==="human"&&c.retainedTraffic&&!c.exitingMetro).length+" / "+retainedTrafficTarget()+" added cars · "+cars.filter(c=>c.kind==="human"&&c.exitingMetro).length+" leaving.";
   document.getElementById("gridlock").textContent = gridlock.toFixed(2);
   latestMetrics = { active, queued: queue.length, pooled: pooledCount, gridlock };
   if (spectateCar) {
@@ -4190,7 +4257,7 @@ document.getElementById("reset").addEventListener("click", () => {
   trains.length=0;trainJobs.length=0;railBlockedEdges.clear();for(const waiting of railWaiting.values())waiting.length=0;
   nextPoliceAt=180*(.5+Math.random());nextFireAt=600*(.5+Math.random());nextTroubleAt=480*(.5+Math.random());
   simMinute = DAY_START;
-  humanSpawnCredit=0;
+  humanSpawnCredit=0;retainedSpawnCredit=0;
   sharedPickups=0;
   passengerTransfers.length=0;
   for(const evt of eventSchedule) evt.fired=false;
@@ -4372,7 +4439,7 @@ updateControlsDisplay();
 sizeGraphCanvas();
 setMode("auto");
 // All maps render and pick from the same world coordinates and simulation state.
-const allPoints=[...extraNodes.values(),[0,0],[780,780]];
+const allPoints=[...[...extraNodes].filter(([id])=>!highwayNodes.has(id)).map(([,point])=>point),[0,0],[780,780]];
 const worldBounds=[Math.min(...allPoints.map(p=>p[0]))-100,Math.min(...allPoints.map(p=>p[1]))-180,
  Math.max(...allPoints.map(p=>p[0]))+100,Math.max(...allPoints.map(p=>p[1]))+100];
 setupRail();
@@ -4389,7 +4456,7 @@ function addMap(id,title,description,bounds,existing) {
  const view={id,canvas:cv,scale,tx:390-(bounds[0]+bounds[2])/2*scale,ty:390-(bounds[1]+bounds[3])/2*scale};
  mapViews.push(view);cv.addEventListener("click",e=>handleMapClick(e,view));
 }
-addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow connected roads. Three-car trains carry up to 60 passengers in both directions between other metros, corner Central Station and Juniper Park & Ride, continuing off-map beyond either station. Red crossing gates stop road traffic until the train clears.",worldBounds);
+addMap("region","Regional network","Sedans, shuttles and purple 20-seat buses follow curved access roads. The interstate connects through the farthest neighborhood via on/off ramps. Three-car trains carry up to 60 passengers in both directions between other metros, corner Central Station and Juniper Park & Ride, continuing off-map beyond either station. Red crossing gates stop road traffic until the train clears.",worldBounds);
 addMap("center","15 minute city center","6 × 6 blocks · 600 × 600 m · jobs, schools, groceries and Central Station. Tap buildings in Interactive mode to plan a trip across any map.",[0,0,780,780],canvas);
 for(const [i,d] of developments.entries()) addMap("district-"+i,d.name,
  `${d.homes.length} residences · ${d.gapMeters===0?"directly connected":(d.gapMeters/1609).toFixed(2)+" mi from the city edge"} · winding boulevards and four cul-de-sacs.`,d.bounds);

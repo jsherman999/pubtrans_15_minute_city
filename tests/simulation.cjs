@@ -423,8 +423,8 @@ console.log('PASS: recovery safely waits for a closed destination and retries wi
    const reserved=human.route.edges.length/N_EDGES;
    if(Math.abs(gridlockBreakdown().values.human-reserved)>1e-10)throw Error('private traffic missing from gridlock');
    const originalRoute=human.route;
-   for(let i=0;i<3000&&human.state!=='human_done';i++){tickStoplights();stepCars(1);}
-   if(human.state!=='human_done'||human.nodeId!==human.destination.accessId)throw Error('private trip never reached destination');
+   for(let i=0;i<5000&&human.state!=='human_done';i++){simElapsed+=SIM_MIN_PER_TICK;tickHumanTraffic();tickStoplights();stepCars(1);}
+   if(human.state!=='human_done'||!highwayExits.includes(human.nodeId))throw Error('private trip never reached interstate exit');
    if(completedCount!==0)throw Error('private trip polluted transit completions');
    if(Object.values(edges).some(e=>e.claims.has(human.id)))throw Error('private claims leaked');
    tickEmergencyVehicles();if(cars.includes(human))throw Error('arrived private car not removed');
@@ -578,3 +578,27 @@ console.log('PASS: flexible pickups/dropoffs in both directions, 60-seat limit, 
  `);
 }
 console.log('PASS: doubled bidirectional services, both station orders, no reversal, opposite map exits, parallel tracks and crossing cleanup.');
+{
+ const {run}=boot(665);
+ run(`
+   dbg=()=>{};cars.length=0;queue.length=0;
+   for(const d of developments) {
+     const route=dijkstra(d.gate,d.entry),a=nodeXY(d.gate),b=nodeXY(d.entry);
+     if(!route.nodes.some(n=>{const p=nodeXY(n);return Math.abs((p[0]-a[0])*(b[1]-a[1])-(p[1]-a[1])*(b[0]-a[0]))>1;}))throw Error('straight development connector');
+   }
+   const radius=d=>{const p=nodeXY(d.entry);return Math.hypot(p[0]-390,p[1]-390);};
+   if(developments.some(d=>radius(d)>radius(highwayDevelopment)+1e-8))throw Error('interstate placed in wrong development');
+   for(const entrance of highwayEntrances)if(!dijkstra(entrance,highwayDevelopment.entry))throw Error('off-ramp disconnected');
+   for(const exit of highwayExits)if(!dijkstra(highwayDevelopment.entry,exit))throw Error('on-ramp disconnected');
+   for(const n of [...highwayEntrances,...highwayExits]) {const [x,y]=nodeXY(n);if(x>=worldBounds[0]&&x<=worldBounds[2]&&y>=worldBounds[1]&&y<=worldBounds[3])throw Error('interstate ends on map');}
+   humanTrafficRate=2;humanSpawnCredit=-1e9;retainedSpawnCredit=1;
+   let retainedIds=[];
+   for(let i=0;i<2000;i++){simElapsed+=SIM_MIN_PER_TICK;tickHumanTraffic();tickStoplights();stepCars(1);tickEmergencyVehicles();}
+   const retained=cars.filter(c=>c.retainedTraffic);retainedIds=retained.map(c=>c.id);
+   if(retained.length!==5||retained.some(c=>c.exitingMetro))throw Error('added cars failed to remain in metro');
+   humanTrafficRate=1;let sawExit=false;
+   for(let i=0;i<5000&&cars.some(c=>c.retainedTraffic);i++){simElapsed+=SIM_MIN_PER_TICK;tickHumanTraffic();tickStoplights();stepCars(1);sawExit ||= cars.some(c=>c.retainedTraffic&&c.exitingMetro);tickEmergencyVehicles();}
+   if(!sawExit||cars.some(c=>retainedIds.includes(c.id)))throw Error('reduced traffic failed to depart via interstate');
+ `);
+}
+console.log('PASS: curved development connectors, outermost interchange, directed ramps, off-map interstate portals, retained traffic target and departures after slider reduction.');
