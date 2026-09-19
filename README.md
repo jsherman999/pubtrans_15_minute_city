@@ -14,7 +14,7 @@ A browser-only autonomous transit simulation adapted from [pubtrans_solved](http
 
 ## Using it
 
-Scroll through the regional overview, city center, and five neighborhood maps. Sticky shortcuts jump between maps and Controls / POV. On desktop, the controls remain in a sidebar; on phones they follow the maps and metrics.
+Scroll through the regional overview, city center, and five neighborhood maps. Each map has a Pause/Resume button in its upper-right corner that controls the whole simulation, including interactive driving. All map buttons and the Controls button stay synchronized. Sticky shortcuts jump between maps and Controls / POV. On desktop, the controls remain in a sidebar; on phones they follow the maps and metrics.
 
 **Auto:** runs immediately at 1×. Change speed, pause/resume, reset the day, adjust population or fleet, and tap a moving vehicle on any map to watch its driver POV. Reset day preserves the geography; refresh randomizes it.
 

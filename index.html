@@ -129,6 +129,8 @@ html,body { height:auto; min-height:100%; overflow:visible; scroll-behavior:smoo
 .canvas-wrap {display:block;padding:16px;}
 #map,.district-map {width:100%;height:auto;max-height:none;box-shadow:none;border-radius:8px;display:block;}
 .map-card {margin:0 0 22px;padding:14px;background:#191c22;border:1px solid #303640;border-radius:12px;scroll-margin-top:66px;}
+.map-card-header {display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.map-card-header > button {flex-shrink:0;}
 .map-card h2 {font-size:17px;color:#e2e8f0;margin-bottom:6px;text-transform:none;letter-spacing:0;}
 .map-card p {color:#98a6b8;font-size:12px;line-height:1.5;margin-bottom:12px;}
 .page-title {padding:22px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:16px;} .page-title h1 {font-size:26px;} .page-title p {color:#99a6b8;font-size:13px;margin-top:7px;}
@@ -756,6 +758,23 @@ let gridlockPeak = 0;         // highest score observed since Reset day
 let simElapsed = 0;             // monotonic minutes since Reset day
 let simMinute = DAY_START;       // start 07:30
 let paused = false;
+const simulationPauseButtons = [];
+function syncSimulationPauseButtons() {
+  for (const button of simulationPauseButtons) {
+    button.textContent = paused ? "Resume" : "Pause";
+    button.setAttribute("aria-label", paused ? "Resume whole simulation" : "Pause whole simulation");
+    button.title = paused ? "Resume whole simulation" : "Pause whole simulation";
+  }
+}
+function setSimulationPaused(value) {
+  paused = value;
+  syncSimulationPauseButtons();
+}
+function registerSimulationPauseButton(button) {
+  simulationPauseButtons.push(button);
+  button.addEventListener("click", () => setSimulationPaused(!paused));
+  syncSimulationPauseButtons();
+}
 function clockStr() {
   const t = ((simMinute % 1440) + 1440) % 1440;
   const h = Math.floor(t / 60);
@@ -1904,8 +1923,7 @@ function startSpectate(car) {
     if (sl) sl.value = 1;
     if (sv) sv.textContent = "1×";
   }
-  paused = false;
-  document.getElementById("pause").textContent = "Pause";
+  setSimulationPaused(false);
   document.getElementById("spectate-info").hidden = false;
   // POV renders in the sidebar cockpit pane; the main grid stays full.
   dbg("SYSTEM", "spectating " + car.id + " (" + car.kind + ")");
@@ -1928,12 +1946,7 @@ function setMode(m) {
   document.getElementById("interactive-panel").hidden = !isIx;
   document.getElementById("auto-controls").hidden = (m !== "auto");
   document.getElementById("map").classList.toggle("interactive", isIx);
-  if (isIx) {
-    paused = true;
-  } else {
-    paused = false;
-  }
-  document.getElementById("pause").textContent = "Pause";
+  setSimulationPaused(false);
   ixReset();
 }
 
@@ -4221,7 +4234,8 @@ function advanceSimulationTime(minutes) {
 }
 
 function simulationStep() {
-  if (mode === "auto" && !paused) {
+  if (paused) return;
+  if (mode === "auto") {
     advanceSimulationTime(SIM_MIN_PER_TICK);
     checkSchedules();
     tickEvents();
@@ -4275,12 +4289,9 @@ document.getElementById("speed").addEventListener("input", (e) => {
 document.getElementById("trigger-emergency").addEventListener("click",()=>{
   triggerEmergency();
   if(mode!=="auto")setMode("auto");
-  paused=false;document.getElementById("pause").textContent="Pause";
+  setSimulationPaused(false);
 });
-document.getElementById("pause").addEventListener("click", () => {
-  paused = !paused;
-  document.getElementById("pause").textContent = paused ? "Resume" : "Pause";
-});
+registerSimulationPauseButton(document.getElementById("pause"));
 document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
   for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || ["recovery","human"].includes(cars[i].kind))cars.splice(i,1);
@@ -4479,7 +4490,10 @@ const mapViews=[];
 const wrap=document.querySelector(".canvas-wrap");
 function addMap(id,title,description,bounds,existing) {
  const card=document.createElement("section");card.className="map-card";card.id=id==="center"?"center-card":id==="region"?"region-card":id;
- const heading=document.createElement("h2");heading.textContent=title;card.append(heading);
+ const header=document.createElement("div");header.className="map-card-header";
+ const heading=document.createElement("h2");heading.textContent=title;header.append(heading);
+ const pauseButton=document.createElement("button");pauseButton.type="button";
+ registerSimulationPauseButton(pauseButton);header.append(pauseButton);card.append(header);
  const caption=document.createElement("p");caption.textContent=description;card.append(caption);
  const cv=existing || document.createElement("canvas");cv.width=cv.height=780;cv.classList.add("district-map");
  cv.setAttribute("aria-label",title+". In Auto mode tap a vehicle; in Interactive mode tap a building.");

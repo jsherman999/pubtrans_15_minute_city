@@ -13,6 +13,35 @@ function boot(seed) {
  vm.createContext(sandbox);vm.runInContext(source,sandbox);
  return {run:s=>vm.runInContext(s,sandbox),elements};
 }
+// Every map and the sidebar control the same pause state, in both modes.
+{
+ const {run,elements}=boot(42);
+ assert.equal(run('simulationPauseButtons.length'),8);
+ run('render=()=>{};renderCockpit=()=>{};renderMetricsGraph=()=>{};');
+ for(let button=0;button<8;button++) {
+   run(`simulationPauseButtons[${button}].click()`);
+   assert.equal(run('paused && simulationPauseButtons.every(b=>b.textContent==="Resume")'),true);
+   const before=run('JSON.stringify([simElapsed,cars,trains,queue])');
+   run('tick();tick();');
+   assert.equal(run('JSON.stringify([simElapsed,cars,trains,queue])'),before);
+   run(`simulationPauseButtons[${(button+1)%8}].click()`);
+   assert.equal(run('!paused && simulationPauseButtons.every(b=>b.textContent==="Pause")'),true);
+   const elapsed=run('simElapsed');
+   run('tick()');
+   assert.ok(run('simElapsed')>elapsed);
+ }
+ run('setMode("interactive");ix.drivingCar=cars[0];ix.drivingCar.state="driving";stepCars=()=>{};');
+ const elapsed=run('simElapsed');
+ run('simulationPauseButtons[2].click();tick();');
+ assert.equal(run('simElapsed'),elapsed);
+ elements.get('pause').click();
+ run('tick()');
+ assert.ok(run('simElapsed')>elapsed);
+ run('setSimulationPaused(true);setMode("auto");');
+ assert.equal(run('!paused && simulationPauseButtons.every(b=>b.textContent==="Pause")'),true);
+}
+console.log('PASS: all seven map pause buttons and sidebar stay synchronized; auto and interactive simulation pause and resume.');
+
 for(let trial=0;trial<12;trial++) {
  const {run,elements}=boot();
  assert.equal(run('GRID_N-1'),6);
