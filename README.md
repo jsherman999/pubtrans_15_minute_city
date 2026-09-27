@@ -14,9 +14,9 @@ A browser-only autonomous transit simulation adapted from [pubtrans_solved](http
 
 ## Using it
 
-Scroll through the regional overview, city center, and five neighborhood maps. Each map has a Pause/Resume button in its upper-right corner that controls the whole simulation, including interactive driving. All map buttons and the Controls button stay synchronized. Sticky shortcuts jump between maps and Controls / POV. On desktop, the controls remain in a sidebar; on phones they follow the maps and metrics.
+Scroll through the regional overview, city center, and five neighborhood maps. Each map has a Pause/Resume button in its upper-right corner that controls the whole simulation, including interactive driving. All map buttons and the Controls button stay synchronized. Sticky shortcuts jump to the regional map, the city center and Controls / POV; the neighborhood maps follow by scrolling. The Guide opens with a tip: pause to examine the simulation's state, and switch Driver POV at any time by tapping another vehicle. On desktop, the controls remain in a sidebar; on phones they follow the maps and metrics.
 
-**Auto:** runs immediately at 1×. Change speed, pause/resume, reset the day, adjust population or fleet, and tap a moving vehicle on any map to watch its driver POV. Otherwise Driver POV rides one bus for the whole simulation: it starts on the Juniper Commons bus, whose neighborhood adjoins the center, and stays with it through depot waits and Reset day. Exiting a tapped vehicle returns to that bus; the view changes bus only if the followed bus is removed from the fleet. Reset day preserves the geography; refresh randomizes it.
+**Auto:** runs immediately at 1×. Change speed, pause/resume, reset the day, adjust population or fleet, and tap a moving vehicle on any map to watch its driver POV. Tapping a vehicle while paused switches the view without resuming the simulation. Otherwise Driver POV rides one bus for the whole simulation: it starts on the Juniper Commons bus, whose neighborhood adjoins the center, and stays with it through depot waits and Reset day. Exiting a tapped vehicle returns to that bus; the view changes bus only if the followed bus is removed from the fleet. Reset day preserves the geography; refresh randomizes it.
 
 **Interactive:** select the mode in Controls, tap a source building and destination on any maps, then return to Controls / POV and press Plan and Drive. Candidate routes, congestion scoring, obstacles, replanning and driver POV work across the region. A cul-de-sac has only one exit, so some origin/destination pairs have fewer than three distinct routes.
 
@@ -73,6 +73,12 @@ Every downtown building has its own Driver POV design, with named signs readable
 - **Riverbend Apts:** U-shaped block with balconies around a courtyard garden. **Birch Hgts:** white mid-rise with glass balconies, penthouse and podium roof garden. **Oak Hgts:** brick building with bay windows and a slate mansard. **Cedar Block:** timber-clad L-shaped block. **Maple Row:** eight townhouses with stoops and mixed cornices and gables.
 
 Top-down maps keep the type colors and add each building's roof plan: setbacks, rooftop equipment, lawns, lots and trees.
+
+**Juniper Park & Ride** follows its straight stretch of track: side platforms with yellow edge lines under red-trimmed canopies, a brick ticket hall with signs and a clock facing the access road and the tracks, a drop-off plaza with a bus shelter and parking sign, a lit parking lot with parked cars, and a lawn with trees across the line. Its map plan turns with the track. In Driver POV, train coaches are painted in the same back-to-front order as buildings, and stations order them with their platforms, canopies and halls, so buildings in front of a train hide it.
+
+## Live metrics and debug stream
+
+The Live metrics graph plots two lines, each scaled to its own visible maximum (labeled in the series color): **Queue wait**, the average minutes waited so far by riders still awaiting pickup (including those already assigned a vehicle), and **Queued**, the number of requests not yet assigned a vehicle. The Debug stream panel has a **Pop window** button that opens the same stream in its own window, like the button in Controls.
 
 Each actual passenger transfer creates a small moving stick figure between the building and the vehicle stop: yellow for boarding and green for alighting. Group dropoffs stagger the figures for readability. Boarding figures are synchronized with a nine-simulated-second departure pause, scaled to playback speed, and end before the vehicle leaves. Effects also appear in Driver POV when within its field of view, and Reset day clears them. The animations are visual only and do not alter passenger accounting or boarding timing.
 

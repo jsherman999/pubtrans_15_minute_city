@@ -175,6 +175,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 .guide-body h3 {margin:22px 0 8px;font-size:16px;text-transform:none;letter-spacing:0;color:#f1f5f9;}
 .guide-body p {margin-top:12px;}
 .guide-body .guide-note {color:#a9b6c8;border-top:1px solid #303640;padding-top:16px;}
+.guide-body .guide-tip {background:#16202c;border-left:3px solid #14b8a6;border-radius:4px;padding:10px 12px;}
 .help-label {display:inline-flex;align-items:center;}
 .help-button {display:inline-flex;align-items:center;justify-content:center;position:relative;width:8px;height:8px;min-height:8px;padding:0;margin-left:7px;border:1px solid #65758b;border-radius:50%;background:#242a33;color:#c8d6e8;font-size:6px;font-weight:700;line-height:1;vertical-align:middle;cursor:help;flex-shrink:0;letter-spacing:0;}
 .help-button::after {content:"";position:absolute;inset:-8px;}
@@ -189,6 +190,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
 <dialog id="guide" aria-labelledby="guide-title">
   <div class="guide-heading"><h2 id="guide-title">Simulation guide</h2><form method="dialog"><button aria-label="Close guide" autofocus>Close</button></form></div>
   <div class="guide-body">
+    <p class="guide-tip"><strong>Tip:</strong> Press Pause at any time to freeze the simulation and examine its state. Vehicles, waiting riders, queues, metrics and Driver POV all hold still while you look around the maps. In Auto mode, tap or click any moving fleet vehicle, even while paused, to switch Driver POV to it; Exit POV returns to the followed bus.</p>
     <p>Explore how a shared autonomous transport fleet serves a compact city and its surrounding neighborhoods. Change demand, fleet sizes, ride sharing and human-driven traffic, then watch how trips, queues and road pressure respond.</p>
     <h3>The world and its riders</h3>
     <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. About two thirds of homes are downtown: 212 apartments and townhouses in five buildings, with 120 houses in the neighborhoods. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then continue off the opposite end of the map. Each scheduled service sends a train from both directions, doubling service frequency. Opposing trains use parallel tracks in the same rail corridor. Riders transfer to the road fleet; outbound passengers board at the platforms. Trains also make 30-second extra stops for unassigned requests when both buildings are within one block of the tracks and the destination is ahead along the line. These riders share the 60 seats and count toward normal ride and queue averages. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
@@ -208,7 +210,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <p>This was inspired by a comment that 'it would take an entire datacenter per city' to route SDEV traffic in a public transportation system.  In fact it wouldn't take much more than what your browser uses ;) (real challenge will be integrating AI as an overall judge of what the sensors are seeing, bringing safety to near 100%)</p>
   </div>
 </dialog>
-<nav class="map-nav" aria-label="Map shortcuts"><a href="#region-card">Whole region</a><a href="#center-card">City center</a><a href="#district-0">Willow</a><a href="#district-1">Cedar</a><a href="#district-2">Meadow</a><a href="#district-3">Oak</a><a href="#district-4">Juniper</a><a href="#controls">Controls / POV</a></nav>
+<nav class="map-nav" aria-label="Map shortcuts"><a href="#region-card">Whole region</a><a href="#center-card">City center</a><a href="#controls">Controls / POV</a></nav>
 <div class="app">
   <div class="main-col">
     <div class="grid-col">
@@ -240,6 +242,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <button id="dbg-toggle" title="Collapse / expand">▾</button>
         <h1>Debug stream</h1>
         <div class="grow"></div>
+        <button id="dbg-pop-inline" title="Open the debug stream in its own window">Pop window</button>
         <button id="dbg-pause-inline">Pause</button>
         <button id="dbg-clear-inline">Clear</button>
       </header>
@@ -250,11 +253,8 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
         <h1>Live metrics</h1>
         <div class="grow"></div>
         <span class="graph-legend">
-          <span class="gl" style="--c:#22c55e">Active <b id="g-active">0</b></span>
-          <span class="gl" style="--c:#fbbf24">Queued <b id="g-queued">0</b></span>
-          <span class="gl" style="--c:#f97316">Pooled <b id="g-pooled">0</b></span>
-          <span class="gl" style="--c:#ef4444">Gridlock <b id="g-gridlock">0.00</b></span>
-          <span class="gl" style="--c:#14b8a6">Surge</span>
+          <span class="gl" style="--c:#60a5fa" title="Average minutes waited so far by riders still awaiting pickup, including those already assigned a vehicle">Queue wait <b id="g-wait">0.0</b> min</span>
+          <span class="gl" style="--c:#fbbf24" title="Ride requests not yet assigned a vehicle">Queued <b id="g-queued">0</b></span>
         </span>
       </header>
       <canvas id="metrics-graph"></canvas>
@@ -980,6 +980,18 @@ function averageQueueMinutes() {
     total+=Math.max(0,simElapsed-request.requestedAt);count++;
   }
   return count ? total/count : null;
+}
+// Mean minutes waited so far by riders still awaiting pickup, including those
+// already assigned a vehicle; 0 when nobody is waiting.
+function currentQueueWaitMinutes() {
+  const waiting=new Set(queue);
+  for(const car of cars)for(const request of car.pickupQueue || [])waiting.add(request);
+  let total=0,count=0;
+  for(const request of waiting) {
+    if(request.pickedUpAt != null || request._queueRecorded)continue;
+    total+=Math.max(0,simElapsed-request.requestedAt);count++;
+  }
+  return count ? total/count : 0;
 }
 function completePassenger(request) {
   if(!Number.isFinite(request.pickedUpAt) || request.completedAt != null) return false;
@@ -1923,7 +1935,7 @@ function startSpectate(car) {
     if (sl) sl.value = 1;
     if (sv) sv.textContent = "1×";
   }
-  setSimulationPaused(false);
+  // A paused simulation stays paused so riders can inspect other vehicles' views.
   document.getElementById("spectate-info").hidden = false;
   // POV renders in the sidebar cockpit pane; the main grid stays full.
   dbg("SYSTEM", "spectating " + car.id + " (" + car.kind + ")");
@@ -2375,7 +2387,6 @@ function fireEvent(evt) {
     injected++;
   }
   currentEvent = { label: evt.label, timer: EVENT_BANNER_TICKS };
-  surgePending = true;   // marks the next metrics sample with a surge line
   dbg("EVENT", evt.label + " · " + injected + " requests injected");
 }
 
@@ -2837,20 +2848,6 @@ function drawRailFPV(cam) {
     strokePolyWorld([[seg.a[0]+x,seg.a[1]+y,.2],[seg.b[0]+x,seg.b[1]+y,.2]],cam);
   }
 }
-function drawTrainFPV(cam) {
-  const coaches=[];
-  for(const train of trains)for(let i=0;i<3;i++)coaches.push(trainPoint(train,train.distance-train.direction*i*RAIL_CAR_SPACING));
-  coaches.sort((a,b)=>Math.hypot(b.x-cam.x,b.y-cam.y)-Math.hypot(a.x-cam.x,a.y-cam.y));
-  for(const p of coaches) {
-    if(Math.hypot(p.x-cam.x,p.y-cam.y)>FPV_FAR+50)continue;
-    const P=(u,v,z)=>[p.x+Math.cos(p.heading)*u-Math.sin(p.heading)*v,p.y+Math.sin(p.heading)*u+Math.cos(p.heading)*v,z];
-    fpvCtx.fillStyle="#e2e8f0";
-    for(const v of [-8,8])fillPolyWorld([P(-21,v,0),P(21,v,0),P(21,v,18),P(-21,v,18)],cam);
-    fpvCtx.fillStyle="#2563eb";
-    fillPolyWorld([P(-21,-8,18),P(21,-8,18),P(21,8,18),P(-21,8,18)],cam);
-    for(const u of [-21,21])fillPolyWorld([P(u,-8,0),P(u,8,0),P(u,8,18),P(u,-8,18)],cam);
-  }
-}
 function drawRail() {
   ctx.save();ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;
   for(const offset of [-18,-6,6,18]) {
@@ -3065,18 +3062,22 @@ function drawBuildings() {
       const [ax,ay]=nodeXY(b.accessId);ctx.strokeStyle="#414650";ctx.lineWidth=4;
       ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(cx,cy);ctx.stroke();
     }
-    // shadow
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(bx + 2, by + 3, BSIZE, BSIZE);
-    // building
-    ctx.fillStyle = b.color;
-    ctx.fillRect(bx, by, BSIZE, BSIZE);
-    const design = buildingDesigns.get(b);
+    const design = buildingDesigns.get(b), square = !design || !design.angle;
+    if (square) {
+      // shadow
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(bx + 2, by + 3, BSIZE, BSIZE);
+      // building
+      ctx.fillStyle = b.color;
+      ctx.fillRect(bx, by, BSIZE, BSIZE);
+    }
     if (design) drawDesignPlan(b, design, bx, by, BSIZE);
     // light border
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, by + 0.5, BSIZE - 1, BSIZE - 1);
+    if (square) {
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, BSIZE - 1, BSIZE - 1);
+    }
     // label, haloed in the building color so it stays legible over roof plans
     ctx.fillStyle = "#0f1014";
     ctx.font = "bold 9px -apple-system, sans-serif";
@@ -3402,7 +3403,6 @@ function renderFPV(focalCar = getFocalCar()) {
   drawOneWayArrowsFPV(cam);
   drawRailFPV(cam);
   drawBuildingsFPV(cam);
-  drawTrainFPV(cam);
   drawTrafficControlsFPV(cam);
   drawDynamicFPV(cam, focalCar);
   drawTransfersFPV(cam);
@@ -3743,12 +3743,14 @@ function drawRanchFPV(b,cam) {
 }
 
 // ============================================================
-// Downtown building designs (Driver POV and map roof plans)
+// Building designs (Driver POV and map roof plans)
 // ============================================================
 // Each downtown building is a few convex parts in block-local map units:
 // x east, y south, z up from the block center. Designs are written facing
 // south, then turned by quarter turns (1 west, 2 north, 3 east), and parts
-// stay within ±44, the Driver POV road inset. Standing parts never overlap
+// stay within ±44, the Driver POV road inset. Juniper Park & Ride is instead
+// written along its straight track (x along the rail, +y to its right) and
+// rotated to the rail heading at draw time. Standing parts never overlap
 // on all three axes, so a separating plane always decides their draw order.
 // Flat decorations (windows, doors, signs, balconies, awnings) belong to one
 // face and draw right after it. A name-seeded generator keeps styling out of
@@ -3894,22 +3896,21 @@ function designKit(name) {
   }
   function roofColor(p,color) {for(const f of p.faces)if(f.n[2]>.2)f.color=color;}
   function car(x,y,color,alongY=true) {
-    const c=alongY?box(x-2.5,y-4.5,0,x+2.5,y+4.5,4,color):box(x-4.5,y-2.5,0,x+4.5,y+2.5,4,color);
+    const c=alongY?box(x-2.5,y-4.5,0,x+2.5,y+4.5,4,color,{plan:"own"}):box(x-4.5,y-2.5,0,x+4.5,y+2.5,4,color,{plan:"own"});
     const t=side(c,"top");deco(t,"#1c2530",[alongY?rect(t,.7,2.2,4.3,6.8,.05):rect(t,2.2,.7,6.8,4.3,.05)]);
   }
   return {parts,rand,part,frame,at,rect,side,deco,band,windows,sign,centeredSign,awning,balconies,cornice,bayWindow,arch,clock,
     box,extrude,frustum,pyramid,oct,cone,tree,roofColor,car};
 }
 
-const DOWNTOWN_DESIGNS={
+const BUILDING_DESIGNS={
   // Brick head house with arched windows and a clock tower; a platform canopy
   // spans the through tracks, which enter from the north and leave east.
-  "Central Stn":{turn:0,height:28,build(k){
+  "Central Stn":{turn:0,height:28,trackside:true,build(k){
     const brick="#8e3b32",copper="#4f8070",stone="#d9ccb2";
-    k.box(10,-26,0,44,-21,2,"#8f9296");k.box(-14,21,0,44,26,2,"#8f9296");
-    k.box(-14,-27,17,44,27,19,"#59616c");
-    for(const x of [-10,16,40])for(const y of [-25.5,24.5])
-      k.box(x-1,y-1,(y>0||x>10)?2:0,x+1,y+1,17,"#3b4048",{plan:false});
+    k.box(10,-26,0,44,-21,2,"#8f9296",{plan:"own"});k.box(4,21,0,44,26,2,"#8f9296",{plan:"own"});
+    k.box(-14,-27,20,44,27,22,"#59616c",{plan:"own"});   // canopy clears the 18-high coaches
+    for(const x of [16,40])for(const y of [-25.5,24.5])k.box(x-1,y-1,2,x+1,y+1,20,"#3b4048",{plan:false});
     const hall=k.box(-30,27,0,44,44,28,brick),front=k.side(hall,"s"),back=k.side(hall,"n");
     for(const u of [12,62])k.arch(front,u,12,3,16,"#f0dfaa",true);
     k.arch(front,37,12,9,16,"#f0dfaa",true);
@@ -4199,11 +4200,56 @@ const DOWNTOWN_DESIGNS={
     for(const d of ["s","n","e","w"])k.windows(k.side(roof,d),{v0:3,rows:1,w:4,h:5,bay:12,lit:.4,frameColor:"#d8d0c0"});
     k.box(-30,-12,70,-25,-6,78,brick);k.box(25,6,70,30,12,78,brick);
   }},
+  // Suburban terminal along the straight track: side platforms under
+  // canopies, a brick ticket hall on the access side, a drop-off plaza with a
+  // bus shelter and parking sign, a lit parking lot and a lawn across the line.
+  // Standing parts keep |y| >= 21 so both tracks' coaches pass between them.
+  "Juniper Park & Ride":{alongRail:true,trackside:true,height:20,build(k){
+    const brick="#8e3b32",steel="#59616c",platform="#8f9296";
+    const lot=k.box(-30,-100,0,60,-54,.3,"#2a2c30"),lotTop=k.side(lot,"top");
+    k.deco(lotTop,"#8d9095",[3,31].flatMap(v=>Array.from({length:11},(_,i)=>k.rect(lotTop,4+i*8,v,4.6+i*8,v+12,.02))));
+    k.box(-40,-52,0,30,-31,.3,"#6f6b64");k.box(-60,32,0,60,62,.25,"#2f4a2d");
+    for(const [x0,y0,y1,edge] of [[-20,-30,-21,-21.8],[-60,21,30,21]]) {
+      const top=k.side(k.box(x0,y0,0,60,y1,2,platform,{plan:"own"}),"top");
+      k.deco(top,"#facc15",[k.rect(top,0,edge-y0,60-x0,edge-y0+.8,.02)]);
+    }
+    const canopies=[k.box(-18,-30,15,58,-21,16.5,steel,{plan:"own"}),k.box(-58,21,15,58,30,16.5,steel,{plan:"own"})];
+    for(const x of [-12,14,40])k.box(x-.8,-26.5,2,x+.8,-24.5,15,"#3b4048",{plan:false});
+    for(const x of [-50,-20,10,40])k.box(x-.8,24.5,2,x+.8,26.5,15,"#3b4048",{plan:false});
+    for(const c of canopies)for(const d of ["n","s"])k.band(k.side(c,d),0,1.5,"#c0392b");
+    const hall=k.box(-12,-48,0,26,-31,20,brick),north=k.side(hall,"n"),south=k.side(hall,"s");
+    k.deco(north,"#e6f4f7",[k.rect(north,13,0,25,11,.1)],{lit:true});
+    k.deco(north,"#35505c",[16,19,22].map(u=>k.rect(north,u-.3,0,u+.3,11,.15)));
+    k.windows(north,{v0:4,rows:1,w:5,h:7,bay:9,lit:.5,frameColor:"#e8dfcf",skip:(r,c)=>c===1||c===2});
+    k.sign(north,4,34,13,17.5,"JUNIPER PARK & RIDE","#ffffff","#1f3b5b");
+    k.windows(south,{v0:4,rows:1,w:5,h:8,bay:7.5,lit:.6,frameColor:"#e8dfcf"});
+    k.sign(south,9,29,13,17,"JUNIPER","#f1e6d0","#1f3b5b");
+    k.clock(south,34,16,2.4);
+    for(const d of ["e","w"])k.windows(k.side(hall,d),{v0:4,rows:1,w:4,h:7,bay:8,lit:.5,frameColor:"#e8dfcf"});
+    k.roofColor(k.extrude("x",-12,26,[[-48,20],[-31,20],[-39.5,26]],brick),"#3f4650");
+    const shelter=k.box(-28,-46,0,-18,-42,8,"#9fc3d6"),sf=k.side(shelter,"s");
+    k.deco(sf,"#3b4048",[k.rect(sf,0,0,.6,8,.1),k.rect(sf,9.4,0,10,8,.1),k.rect(sf,1,2.5,9,3.3,.1)]);
+    k.box(-29,-47,8,-17,-41,9,steel);
+    k.box(-26.5,-55,0,-25.5,-54,12,"#9aa0a6",{plan:false});
+    const parking=k.box(-26.5,-58,12,-25.5,-51,18,"#1d4ed8",{plan:false});
+    for(const d of ["e","w"])k.sign(k.side(parking,d),1,6,1,5,"P","#ffffff",null);
+    for(const x of [-10,22,54]){k.box(x-.4,-77.4,0,x+.4,-76.6,14,"#6b7280",{plan:false});k.box(x-2,-78,14,x+2,-76,15,"#fde68a",{plan:false});}
+    const colors=["#b91c1c","#e5e7eb","#1d4ed8","#57534e","#15803d","#a16207","#f8fafc","#334155","#9f1239"];
+    [-22,-6,18,34,50].forEach((x,i)=>k.car(x,-91,colors[i]));
+    [-14,2,26,42].forEach((x,i)=>k.car(x,-63,colors[i+5]));
+    k.tree(-40,46,1);k.tree(0,50,.9);k.tree(36,44,1.1);
+  }},
 };
 
 function makeBuildingDesign(b) {
-  const spec=DOWNTOWN_DESIGNS[b.name];
+  const spec=BUILDING_DESIGNS[b.name];
   if(!spec)return null;
+  let angle=0;
+  if(spec.alongRail) {
+    const [x,y]=buildingCenter(b),seg=railSegments.find(s=>Math.hypot(s.b[0]-x,s.b[1]-y)<1e-6);
+    if(!seg)return null;
+    angle=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]);
+  }
   const kit=designKit(b.name);spec.build(kit);
   const t=spec.turn,turn=p=>t===1?[-p[1],p[0],p[2]]:t===2?[-p[0],-p[1],p[2]]:t===3?[p[1],-p[0],p[2]]:p;
   for(const part of kit.parts) {
@@ -4217,10 +4263,15 @@ function makeBuildingDesign(b) {
     part.lo=[0,1,2].map(k=>Math.min(...all.map(p=>p[k])));part.hi=[0,1,2].map(k=>Math.max(...all.map(p=>p[k])));
   }
   const parts=kit.parts;
-  return {parts,height:spec.height,planOrder:parts.slice().sort((a,b)=>a.hi[2]-b.hi[2]),
+  return {parts,height:spec.height,angle,rc:Math.cos(angle),rs:Math.sin(angle),trackside:!!spec.trackside,
+    planOrder:parts.slice().sort((a,b)=>a.hi[2]-b.hi[2]),
     lo:[0,1].map(k=>Math.min(...parts.map(p=>p.lo[k]))),hi:[0,1].map(k=>Math.max(...parts.map(p=>p.hi[k])))};
 }
-for(const b of BUILDINGS){const design=makeBuildingDesign(b);if(design)buildingDesigns.set(b,design);}
+// Rail-aligned designs are added by setupBuildingDesignsAlongRail once the track exists.
+for(const b of BUILDINGS)if(BUILDING_DESIGNS[b.name] && !BUILDING_DESIGNS[b.name].alongRail)buildingDesigns.set(b,makeBuildingDesign(b));
+function setupBuildingDesignsAlongRail() {
+  for(const b of BUILDINGS)if(BUILDING_DESIGNS[b.name]?.alongRail){const design=makeBuildingDesign(b);if(design)buildingDesigns.set(b,design);}
+}
 document.getElementById("legend-city-homes").textContent="Downtown apartments & townhouses ("+
   buildingsByType.residential.reduce((sum,b)=>sum+(b.units || 0),0)+" units)";
 
@@ -4245,8 +4296,9 @@ function orderDesignParts(parts,c) {
   }
   return out;
 }
-function traceDesignPoly(pts,ox,oy,cam) {
-  const verts=pts.map(p=>{const dx=p[0]+ox-cam.x,dy=p[1]+oy-cam.y;return {fwd:dx*cam.cos+dy*cam.sin,right:-dx*cam.sin+dy*cam.cos,z:p[2]-cam.z};});
+// Local design points map to the world as origin + rotation(rc, rs) · point.
+function traceDesignPoly(pts,ox,oy,rc,rs,cam) {
+  const verts=pts.map(p=>{const dx=ox+p[0]*rc-p[1]*rs-cam.x,dy=oy+p[0]*rs+p[1]*rc-cam.y;return {fwd:dx*cam.cos+dy*cam.sin,right:-dx*cam.sin+dy*cam.cos,z:p[2]-cam.z};});
   const clipped=clipPolyNear(verts,FPV_NEAR);
   if(clipped.length<3)return false;
   let q=projectCam(clipped[0]);fpvCtx.moveTo(q.x,q.y);
@@ -4256,8 +4308,8 @@ function traceDesignPoly(pts,ox,oy,cam) {
 }
 // Sign text uses an affine map of the sign's projected corners, drawn at 10×
 // font size so small signs still rasterize cleanly.
-function drawSignFPV(s,ox,oy,cam,fade) {
-  const project=p=>{const v=toCamSpace(p[0]+ox,p[1]+oy,p[2],cam);return v.fwd<FPV_NEAR*2?null:projectCam(v);};
+function drawSignFPV(s,ox,oy,rc,rs,cam,fade) {
+  const project=p=>{const v=toCamSpace(ox+p[0]*rc-p[1]*rs,oy+p[0]*rs+p[1]*rc,p[2],cam);return v.fwd<FPV_NEAR*2?null:projectCam(v);};
   const a=project(s.a),b=project(s.b),c=project(s.c);
   if(!a||!b||!c||Math.hypot(c.x-a.x,c.y-a.y)<4)return;
   fpvCtx.save();
@@ -4270,46 +4322,78 @@ function drawSignFPV(s,ox,oy,cam,fade) {
   fpvCtx.fillText(s.text,s.w*5,s.h*5.3);
   fpvCtx.restore();
 }
-function drawDesignFPV(b,design,cam,dist) {
-  const [ox,oy]=buildingCenter(b);
-  // Skip buildings entirely behind the camera or beside the view. A column's
-  // screen x does not depend on height, so footprint corners decide this.
-  let behind=0,left=0,right=0;
-  for(const [x,y] of [[design.lo[0],design.lo[1]],[design.hi[0],design.lo[1]],[design.hi[0],design.hi[1]],[design.lo[0],design.hi[1]]]) {
-    const v=toCamSpace(x+ox,y+oy,0,cam);
-    if(v.fwd<FPV_NEAR){behind++;continue;}
-    const px=projectCam(v).x;if(px<0)left++;else if(px>FPV_W)right++;
-  }
-  if(behind===4||(behind===0&&(left===4||right===4)))return;
-  const c=[cam.x-ox,cam.y-oy,cam.z],fade=Math.max(.45,1-dist/(FPV_FAR+CELL*2)),detail=dist<FPV_DETAIL_DIST;
-  for(const part of orderDesignParts(design.parts,c))for(const f of part.faces) {
+// Camera position in a design's local frame (inverse rotation about its origin).
+const designCamera=(ox,oy,rc,rs,cam)=>{const dx=cam.x-ox,dy=cam.y-oy;return [dx*rc+dy*rs,-dx*rs+dy*rc,cam.z];};
+function drawPartFPV(part,ox,oy,rc,rs,cam,c,fade,detail) {
+  for(const f of part.faces) {
     const p=f.pts[0];
     if(f.n[0]*(c[0]-p[0])+f.n[1]*(c[1]-p[1])+f.n[2]*(c[2]-p[2])<=1e-6)continue;
     fpvCtx.beginPath();
-    if(!traceDesignPoly(f.pts,ox,oy,cam))continue;
+    if(!traceDesignPoly(f.pts,ox,oy,rc,rs,cam))continue;
     fpvCtx.fillStyle=applyShade(f.color,fade*f.light);fpvCtx.fill();
     for(const d of f.deco) {
       if(d.fine&&!detail)continue;
       fpvCtx.beginPath();
       let any=false;
-      for(const poly of d.polys)any=traceDesignPoly(poly,ox,oy,cam)||any;
+      for(const poly of d.polys)any=traceDesignPoly(poly,ox,oy,rc,rs,cam)||any;
       if(!any)continue;
       fpvCtx.fillStyle=applyShade(d.color,d.lit?Math.max(fade,.85):fade*f.light);fpvCtx.fill();
     }
-    if(detail)for(const s of f.signs)drawSignFPV(s,ox,oy,cam,fade);
+    if(detail)for(const s of f.signs)drawSignFPV(s,ox,oy,rc,rs,cam,fade);
   }
+}
+// A three-car train's coach as a design part centered at (x, y) with heading h
+// in some local frame: white sides with a window band, blue roof and ends.
+function coachPart(x,y,h) {
+  const cos=Math.cos(h),sin=Math.sin(h),P=(u,v,z)=>[x+u*cos-v*sin,y+u*sin+v*cos,z],L=RAIL_CAR_LENGTH/2;
+  const face=(pts,n,color)=>({pts,n,color,deco:[],signs:[],light:n[2]>.5?.9:.68+.32*Math.max(0,dot3(n,DESIGN_LIGHT))});
+  const faces=[];
+  for(const v of [-8,8]) {
+    const f=face(v<0?[P(L,v,0),P(-L,v,0),P(-L,v,18),P(L,v,18)]:[P(-L,v,0),P(L,v,0),P(L,v,18),P(-L,v,18)],[-Math.sign(v)*sin,Math.sign(v)*cos,0],"#e2e8f0");
+    f.deco.push({color:"#1e293b",polys:[[P(-L+3,v,9),P(L-3,v,9),P(L-3,v,14),P(-L+3,v,14)]]});
+    faces.push(f);
+  }
+  for(const u of [-L,L])faces.push(face(u<0?[P(u,-8,0),P(u,8,0),P(u,8,18),P(u,-8,18)]:[P(u,8,0),P(u,-8,0),P(u,-8,18),P(u,8,18)],[Math.sign(u)*cos,Math.sign(u)*sin,0],"#2563eb"));
+  faces.push(face([P(-L,-8,18),P(L,-8,18),P(L,8,18),P(-L,8,18)],[0,0,1],"#2563eb"));
+  const all=faces.flatMap(f=>f.pts);
+  return {faces,ground:false,lo:[0,1,2].map(k=>Math.min(...all.map(p=>p[k]))),hi:[0,1,2].map(k=>Math.max(...all.map(p=>p[k])))};
+}
+function drawDesignFPV(b,design,cam,dist,coaches=[]) {
+  const [ox,oy]=buildingCenter(b),{rc,rs}=design;
+  // Skip buildings entirely behind the camera or beside the view. A column's
+  // screen x does not depend on height, so footprint corners decide this.
+  let behind=0,left=0,right=0;
+  for(const [x,y] of [[design.lo[0],design.lo[1]],[design.hi[0],design.lo[1]],[design.hi[0],design.hi[1]],[design.lo[0],design.hi[1]]]) {
+    const v=toCamSpace(ox+x*rc-y*rs,oy+x*rs+y*rc,0,cam);
+    if(v.fwd<FPV_NEAR){behind++;continue;}
+    const px=projectCam(v).x;if(px<0)left++;else if(px>FPV_W)right++;
+  }
+  if(!coaches.length&&(behind===4||(behind===0&&(left===4||right===4))))return;
+  const c=designCamera(ox,oy,rc,rs,cam),fade=Math.max(.45,1-dist/(FPV_FAR+CELL*2)),detail=dist<FPV_DETAIL_DIST;
+  // Coaches passing through a station join its painter's order, so platforms,
+  // canopies and halls hide them correctly.
+  const parts=coaches.length?design.parts.concat(coaches.map(p=>{
+    const dx=p.x-ox,dy=p.y-oy;return coachPart(dx*rc+dy*rs,-dx*rs+dy*rc,p.heading-design.angle);})):design.parts;
+  for(const part of orderDesignParts(parts,c))drawPartFPV(part,ox,oy,rc,rs,cam,c,fade,detail);
 }
 // Map roof plan: ground surfaces in their own colors, then roofs lightened by
 // height so podiums, towers and rooftop plant read as distinct outlines.
+// Map roof plan: ground surfaces, cars and platforms in their own colors,
+// buildings in the type color lightened by height so podiums, towers and
+// rooftop plant read as distinct outlines. Block designs stay inside the
+// building square; rail-aligned designs rotate with the track.
 function drawDesignPlan(b,design,bx,by,size) {
   const [cx,cy]=buildingCenter(b);
-  ctx.save();ctx.beginPath();ctx.rect(bx,by,size,size);ctx.clip();
+  ctx.save();
+  if(!design.angle){ctx.beginPath();ctx.rect(bx,by,size,size);ctx.clip();}
+  ctx.translate(cx,cy);ctx.rotate(design.angle);
   for(const p of design.planOrder) {
     if(p.plan===false)continue;
-    const x=cx+p.lo[0],y=cy+p.lo[1],w=p.hi[0]-p.lo[0],h=p.hi[1]-p.lo[1];
+    const x=p.lo[0],y=p.lo[1],w=p.hi[0]-p.lo[0],h=p.hi[1]-p.lo[1];
     if(p.ground){ctx.fillStyle=p.color;ctx.fillRect(x,y,w,h);continue;}
     if(p.plan==="tree"){ctx.fillStyle="#2f5b38";ctx.beginPath();ctx.arc(x+w/2,y+h/2,w/2,0,Math.PI*2);ctx.fill();continue;}
-    ctx.fillStyle="rgba(255,255,255,"+(.05+.2*Math.min(1,p.hi[2]/120)).toFixed(3)+")";ctx.fillRect(x,y,w,h);
+    ctx.fillStyle=p.plan==="own"?p.color:b.color;ctx.fillRect(x,y,w,h);
+    if(p.plan!=="own"){ctx.fillStyle="rgba(255,255,255,"+(.05+.2*Math.min(1,p.hi[2]/120)).toFixed(3)+")";ctx.fillRect(x,y,w,h);}
     ctx.strokeStyle="rgba(0,0,0,0.3)";ctx.lineWidth=.75;ctx.strokeRect(x+.4,y+.4,w-.8,h-.8);
   }
   ctx.restore();
@@ -4329,11 +4413,29 @@ function drawBuildingsFPV(cam) {
     if (dist > FPV_FAR + CELL * 1.5) continue;
     items.push({ b, bx, by, bSize, cx, cy, dist });
   }
+  // Train coaches share the painter's order: a station claims coaches inside
+  // its footprint, and every other coach sorts among buildings by distance.
+  for(const train of trains)for(let i=0;i<3;i++) {
+    const p=trainPoint(train,train.distance-train.direction*i*RAIL_CAR_SPACING),dist=Math.hypot(p.x-cam.x,p.y-cam.y);
+    if(dist>FPV_FAR+50)continue;
+    const station=items.find(item=>{
+      const d=buildingDesigns.get(item.b);
+      if(!d?.trackside)return false;
+      const dx=p.x-item.cx,dy=p.y-item.cy,u=dx*d.rc+dy*d.rs,v=-dx*d.rs+dy*d.rc;
+      return u>=d.lo[0]-RAIL_CAR_LENGTH/2&&u<=d.hi[0]+RAIL_CAR_LENGTH/2&&v>=d.lo[1]-RAIL_CAR_LENGTH/2&&v<=d.hi[1]+RAIL_CAR_LENGTH/2;
+    });
+    if(station)(station.coaches ||= []).push(p);else items.push({coach:p,dist});
+  }
   items.sort((a, b) => b.dist - a.dist);
   for (const item of items) {
+    if(item.coach) {
+      const p=item.coach,rc=Math.cos(p.heading),rs=Math.sin(p.heading),fade=Math.max(.45,1-item.dist/(FPV_FAR+CELL*2));
+      drawPartFPV(coachPart(0,0,0),p.x,p.y,rc,rs,cam,designCamera(p.x,p.y,rc,rs,cam),fade,true);
+      continue;
+    }
     const { b, bx, by, bSize, cx, cy } = item;
     const design=buildingDesigns.get(b);
-    if(design) {drawDesignFPV(b,design,cam,item.dist);continue;}
+    if(design) {drawDesignFPV(b,design,cam,item.dist,item.coaches);continue;}
     if(b.type==="residential") {drawRanchFPV(b,cam);continue;}
     const groundCorners = [
       [bx, by], [bx + bSize, by], [bx + bSize, by + bSize], [bx, by + bSize],
@@ -4661,7 +4763,7 @@ function updateHUD() {
   document.getElementById("traffic-following").textContent=cars.filter(c=>c._followingTraffic&&c.route).length+" vehicles slowed or waiting behind traffic.";
   document.getElementById("human-traffic-status").textContent=cars.filter(c=>c.kind==="human"&&c.retainedTraffic&&!c.exitingMetro).length+" / "+retainedTrafficTarget()+" added cars · "+cars.filter(c=>c.kind==="human"&&c.exitingMetro).length+" leaving.";
   document.getElementById("gridlock").textContent = gridlock.toFixed(2);
-  latestMetrics = { active, queued: queue.length, pooled: pooledCount, gridlock };
+  latestMetrics = { queued: queue.length, queueWait: currentQueueWaitMinutes() };
   if (spectateCar) {
     document.getElementById("spec-car").textContent = spectateCar.id + " (" + spectateCar.kind + ")";
     document.getElementById("spec-state").textContent = spectateCar.state.replace(/_/g, " ");
@@ -4671,23 +4773,19 @@ function updateHUD() {
 
 // ============================================================
 // Live metrics graph — scrolling time-series docked under the debug panel.
-// Plots the relative (per-series-normalized) movement of active rides, queued
-// requests, pooled riders, and gridlock; every surge event drops a teal vertical
-// line (same color as the surge banner) so its effect on the curves is visible.
+// Plots the current queue wait (minutes waited so far by riders still awaiting
+// pickup) and the number of queued requests, each scaled to its own visible
+// maximum, which is labeled in the series color.
 // ============================================================
 const GRAPH_SAMPLES = 240;     // visible window width, in samples (newest pinned right)
-const metricsHist = [];        // ring buffer of { a, q, p, g, surge }
-let surgePending = false;      // set by fireEvent, consumed by the next sample
-let latestMetrics = { active: 0, queued: 0, pooled: 0, gridlock: 0 };
+const metricsHist = [];        // ring buffer of { w, q }
+let latestMetrics = { queued: 0, queueWait: 0 };
 
-// field = sample key, el = header readout id, color = line color
+// f = sample key, color = line color, label = visible-maximum label
 const GRAPH_SERIES = [
-  { f: "a", color: "#22c55e" },   // active rides
-  { f: "q", color: "#fbbf24" },   // queued
-  { f: "p", color: "#f97316" },   // pooled riders
-  { f: "g", color: "#ef4444" },   // gridlock
+  { f: "w", color: "#60a5fa", label: max => "max " + max.toFixed(1) + " min" },   // current queue wait
+  { f: "q", color: "#fbbf24", label: max => "max " + Math.round(max) + " queued" }, // queued requests
 ];
-const SURGE_LINE = "rgba(20, 184, 166, 0.55)";   // matches the surge event banner
 
 const graphCanvas = document.getElementById("metrics-graph");
 const gctx = graphCanvas.getContext("2d");
@@ -4701,26 +4799,19 @@ function sizeGraphCanvas() {
 window.addEventListener("resize", sizeGraphCanvas);
 
 function sampleMetrics() {
-  metricsHist.push({
-    a: latestMetrics.active, q: latestMetrics.queued,
-    p: latestMetrics.pooled, g: latestMetrics.gridlock,
-    surge: surgePending,
-  });
-  surgePending = false;
+  metricsHist.push({ w: latestMetrics.queueWait, q: latestMetrics.queued });
   while (metricsHist.length > GRAPH_SAMPLES) metricsHist.shift();
 }
 
 function renderMetricsGraph() {
   sizeGraphCanvas();
-  document.getElementById("g-active").textContent = latestMetrics.active;
+  document.getElementById("g-wait").textContent = latestMetrics.queueWait.toFixed(1);
   document.getElementById("g-queued").textContent = latestMetrics.queued;
-  document.getElementById("g-pooled").textContent = latestMetrics.pooled;
-  document.getElementById("g-gridlock").textContent = latestMetrics.gridlock.toFixed(2);
   gctx.clearRect(0, 0, gW, gH);
   gctx.fillStyle = "#0a0b0e";
   gctx.fillRect(0, 0, gW, gH);
 
-  const PAD_T = 8, PAD_B = 6;
+  const PAD_T = 18, PAD_B = 6;
   const plotH = Math.max(1, gH - PAD_T - PAD_B);
   gctx.strokeStyle = "rgba(255,255,255,0.06)";
   gctx.lineWidth = 1;
@@ -4734,19 +4825,15 @@ function renderMetricsGraph() {
   const step = gW / (GRAPH_SAMPLES - 1);
   const xAt = j => gW - (n - 1 - j) * step;   // newest sample at the right edge
 
-  // surge markers first, so the data lines draw on top of them
-  gctx.strokeStyle = SURGE_LINE;
-  gctx.lineWidth = 1.5;
-  for (let j = 0; j < n; j++) {
-    if (!metricsHist[j].surge) continue;
-    const x = xAt(j);
-    gctx.beginPath(); gctx.moveTo(x, 0); gctx.lineTo(x, gH); gctx.stroke();
-  }
-
   // one normalized line per series (relative to its own visible max)
-  for (const s of GRAPH_SERIES) {
+  gctx.font = "10px -apple-system, sans-serif";
+  gctx.textBaseline = "top";
+  GRAPH_SERIES.forEach((s, i) => {
     let max = 1e-6;
     for (let j = 0; j < n; j++) max = Math.max(max, metricsHist[j][s.f]);
+    gctx.fillStyle = s.color;
+    gctx.textAlign = i ? "right" : "left";
+    gctx.fillText(s.label(max), i ? gW - 6 : 6, 3);
     gctx.strokeStyle = s.color;
     gctx.lineWidth = 1.6;
     gctx.lineJoin = "round";
@@ -4757,7 +4844,7 @@ function renderMetricsGraph() {
       if (j === 0) gctx.moveTo(x, y); else gctx.lineTo(x, y);
     }
     gctx.stroke();
-  }
+  });
 }
 
 // ============================================================
@@ -4876,7 +4963,6 @@ document.getElementById("reset").addEventListener("click", () => {
   simElapsed = 0;
   pooledCount = 0;
   metricsHist.length = 0;
-  surgePending = false;
   ix.obstacles = [];
   autoObstacleSpawnTimer = 60;
   for (const c of cars) {
@@ -4916,6 +5002,7 @@ document.getElementById("open-guide").addEventListener("click",()=>document.getE
 document.getElementById("mode-auto").addEventListener("click", () => setMode("auto"));
 document.getElementById("mode-interactive").addEventListener("click", () => setMode("interactive"));
 document.getElementById("debug").addEventListener("click", openDebugWindow);
+document.getElementById("dbg-pop-inline").addEventListener("click", openDebugWindow);
 document.getElementById("dbg-pause-inline").addEventListener("click", () => setDebugPaused(!dbgPaused));
 document.getElementById("dbg-clear-inline").addEventListener("click", clearDebugLogs);
 document.getElementById("dbg-toggle").addEventListener("click", () => {
@@ -5045,6 +5132,7 @@ const allPoints=[...[...extraNodes].filter(([id])=>!highwayNodes.has(id)).map(([
 const worldBounds=[Math.min(...allPoints.map(p=>p[0]))-100,Math.min(...allPoints.map(p=>p[1]))-180,
  Math.max(...allPoints.map(p=>p[0]))+100,Math.max(...allPoints.map(p=>p[1]))+100];
 setupRail();
+setupBuildingDesignsAlongRail();
 const mapViews=[];
 const wrap=document.querySelector(".canvas-wrap");
 function addMap(id,title,description,bounds,existing) {
