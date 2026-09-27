@@ -191,9 +191,9 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
   <div class="guide-body">
     <p>Explore how a shared autonomous transport fleet serves a compact city and its surrounding neighborhoods. Change demand, fleet sizes, ride sharing and human-driven traffic, then watch how trips, queues and road pressure respond.</p>
     <h3>The world and its riders</h3>
-    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then continue off the opposite end of the map. Each scheduled service sends a train from both directions, doubling service frequency. Opposing trains use parallel tracks in the same rail corridor. Riders transfer to the road fleet; outbound passengers board at the platforms. Trains also make 30-second extra stops for unassigned requests when both buildings are within one block of the tracks and the destination is ahead along the line. These riders share the 60 seats and count toward normal ride and queue averages. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
+    <p>The center is a 6 × 6 block grid, about 600 meters across. Five neighborhoods have winding streets and cul-de-sacs; four have random connections up to about a mile from the center, and the fifth always adjoins it. About two thirds of homes are downtown: 212 apartments and townhouses in five buildings, with 120 houses in the neighborhoods. Residents travel between homes, jobs, shops and school. Scheduled three-car trains carry up to 60 passengers from other metros, stop at corner Central Station and Juniper Park & Ride, then continue off the opposite end of the map. Each scheduled service sends a train from both directions, doubling service frequency. Opposing trains use parallel tracks in the same rail corridor. Riders transfer to the road fleet; outbound passengers board at the platforms. Trains also make 30-second extra stops for unassigned requests when both buildings are within one block of the tracks and the destination is ahead along the line. These riders share the 60 seats and count toward normal ride and queue averages. Crossing gates hold road traffic until the last carriage clears. Events also add bursts of passengers.</p>
     <h3>Getting around the app</h3>
-    <p>Scroll through the regional, center and neighborhood maps, or use the map shortcuts. They show the same simulation at different scales. Tap an active vehicle for Driver POV. Auto runs scheduled demand; Interactive lets you choose buildings and inspect a trip’s route. Use Pause or Reset day as needed. Playback speed advances everything together—it does not make trips shorter in simulated minutes.</p>
+    <p>Scroll through the regional, center and neighborhood maps, or use the map shortcuts. They show the same simulation at different scales. Driver POV rides one Juniper Commons bus all day; tap an active vehicle to ride along with it instead. Auto runs scheduled demand; Interactive lets you choose buildings and inspect a trip’s route. Use Pause or Reset day as needed. Playback speed advances everything together—it does not make trips shorter in simulated minutes.</p>
     <h3>Dispatch, queues and ride sharing</h3>
     <p>Sedans carry four people, shuttles eight, and large buses twenty. Buses connect their assigned neighborhood with the center. Requests wait until a suitable vehicle can serve them. More demand or longer trips can leave vehicles busy and queues growing. Ride sharing lets shuttles and buses add compatible on-the-way pickups while respecting seats and existing stops; extra pickups can also delay passengers already aboard.</p>
     <p><strong>Avg ride</strong> measures each completed passenger’s time from pickup to destination. <strong>Avg queue</strong> combines finished waits with the growing waits of riders still awaiting pickup, including those assigned a vehicle. Both averages run from Reset day.</p>
@@ -3794,7 +3794,7 @@ function designKit(name) {
   }
   const at=(f,u,v,out=0)=>{frame(f);return addScaled3(addScaled3(addScaled3([0,0,0],f.U,u+f.u0),f.V,v+f.v0),f.n,f.d+out);};
   const rect=(f,u0,v0,u1,v1,out=0)=>[at(f,u0,v0,out),at(f,u1,v0,out),at(f,u1,v1,out),at(f,u0,v1,out)];
-  const side=(p,dir)=>p.faces.reduce((best,f)=>dot3(f.n,SIDES[dir])>dot3(best.n,SIDES[dir])?f:best);
+  const side=(p,dir)=>frame(p.faces.reduce((best,f)=>dot3(f.n,SIDES[dir])>dot3(best.n,SIDES[dir])?f:best));
   function deco(f,color,polys,opts={}) {if(polys.length)f.deco.push({color,polys,lit:!!opts.lit,fine:!!opts.fine});}
   const band=(f,v0,v1,color,opts={})=>deco(frame(f),color,[rect(f,opts.u0??0,v0,opts.u1??f.w,v1,opts.out||0)],opts);
   // Rows of windows centered on the face, split into dark and lit panes.
@@ -3941,7 +3941,7 @@ const DOWNTOWN_DESIGNS={
   }},
   // Blue glass curtain-wall tower over a lit lobby, with a slanted crown.
   "EastBank":{turn:0,height:96,build(k){
-    k.box(-44,-44,0,44,44,.4,"#6d6a64");
+    k.box(-44,-44,0,44,44,.4,"#6d6a64",{plan:false});   // plaza; the map keeps the employer color
     const lobby=k.box(-38,-38,0,38,38,14,"#1d2a36");
     for(const d of ["s","n","e","w"]) {
       const f=k.side(lobby,d);

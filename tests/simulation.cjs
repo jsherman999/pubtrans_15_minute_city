@@ -260,6 +260,89 @@ console.log('PASS: fifth connected neighborhood within one block, two homes at e
  assert.equal(elements.get('ctl-sed').textContent,15);
 }
 console.log('PASS: startup defaults and residential apartment/school event configuration.');
+// Downtown housing units weight home assignment, and the 450-person default
+// keeps the earlier residents-per-home ratio.
+{
+ const {run}=boot(7);
+ const units={"Riverbend Apts":100,"Maple Row":8,"Cedar Block":24,"Birch Hgts":40,"Oak Hgts":40};
+ assert.deepEqual(JSON.parse(run('JSON.stringify(Object.fromEntries(buildingsByType.residential.filter(b=>b.units).map(b=>[b.name,b.units])))')),units);
+ assert.equal(run('buildingsByType.residential.reduce((sum,b)=>sum+(b.units || 1),0)'),332);
+ assert.equal(run('POPULATION'),450);
+ assert.equal(run('POP_MAX'),800);
+ const shares=JSON.parse(run(`(()=>{const n=20000,counts={};
+   for(let i=0;i<n;i++){const b=pickResidential(),key=b.units?b.name:"suburb";counts[key]=(counts[key]||0)+1;}
+   for(const key in counts)counts[key]/=n;return JSON.stringify(counts);})()`));
+ for(const [name,count] of Object.entries({...units,suburb:120}))
+   assert.ok(Math.abs(shares[name]-count/332)<.015,name+' share '+shares[name]);
+}
+console.log('PASS: 212 downtown units in five buildings, unit-weighted home assignment and the 450-person default.');
+
+// Every downtown building has a design that stays inside its block, keeps
+// standing parts separable for painter's ordering, clears the rail corridor
+// and has finite geometry. Driver POV and the maps render it from every
+// intersection.
+{
+ const {run}=boot(3);
+ assert.equal(run('BUILDINGS.filter(b=>b.development==null && b!==parkRide).every(b=>buildingDesigns.has(b))'),true);
+ assert.equal(run('buildingDesigns.size'),14);
+ run(`for(const [b,d] of buildingDesigns){
+   const standing=d.parts.filter(p=>!p.ground);
+   for(const p of d.parts)if(p.lo[0]<-44||p.lo[1]<-44||p.hi[0]>44||p.hi[1]>44)throw Error(b.name+' leaves its block');
+   for(let i=0;i<standing.length;i++)for(let j=i+1;j<standing.length;j++){
+     const a=standing[i],c=standing[j];
+     if(![0,1,2].some(k=>a.hi[k]<=c.lo[k]+1e-6||c.hi[k]<=a.lo[k]+1e-6))throw Error(b.name+' has interpenetrating parts');
+   }
+   for(const p of d.parts)for(const f of p.faces)
+     for(const q of [...f.pts,...f.deco.flatMap(x=>x.polys.flat()),...f.signs.flatMap(s=>[s.a,s.b,s.c])])
+       if(!q.every(Number.isFinite))throw Error(b.name+' has non-finite geometry');
+   if(b.name==="Central Stn")continue;
+   const [cx,cy]=buildingCenter(b);
+   for(let s=0;s<railLength;s+=2){const r=railPoint(s);
+     for(const p of standing){const dx=Math.max(cx+p.lo[0]-r.x,0,r.x-cx-p.hi[0]),dy=Math.max(cy+p.lo[1]-r.y,0,r.y-cy-p.hi[1]);
+       if(Math.hypot(dx,dy)<20)throw Error(b.name+' intrudes on the rail corridor');}}
+ }
+ const box=(lo,hi)=>({lo,hi,ground:false});
+ const podium=box([-44,-44,0],[44,44,28]),tower=box([-30,-30,28],[30,30,100]);
+ if(orderDesignParts([podium,tower],[0,120,14])[0]!==tower)throw Error('tower must paint before its podium from the street');
+ if(orderDesignParts([podium,tower],[0,120,200])[0]!==podium)throw Error('podium must paint first from above');
+ const west=box([-44,0,0],[-10,40,30]),east=box([-10,0,0],[44,40,30]);
+ if(orderDesignParts([east,west],[-100,20,14]).at(-1)!==west)throw Error('nearer west part must paint last');
+ if(orderDesignParts([west,east],[100,20,14]).at(-1)!==east)throw Error('nearer east part must paint last');
+ const original=drawDesignFPV;let drawn=0;
+ drawDesignFPV=(...args)=>{drawn++;return original(...args);};
+ for(let r=0;r<GRID_N;r++)for(let c=0;c<GRID_N;c++)for(let h=0;h<4;h++){
+   const [x,y]=nodeXY(nodeId(c,r)),heading=h*Math.PI/2;
+   renderFPV({...cars[0],pos:{x,y},heading,_displayHeading:heading});
+ }
+ if(!drawn)throw Error('no downtown design rendered');
+ render();
+ `);
+}
+console.log('PASS: fourteen downtown designs inside their blocks, separable parts, rail clearance, finite geometry, painter ordering and rendering.');
+
+// Driver POV rides the Juniper Commons bus all day. Tapped cars override it,
+// and it changes bus only when the followed one leaves the fleet.
+{
+ const {run,elements}=boot(9);
+ run('render=()=>{};renderMetricsGraph=()=>{};dbg=()=>{};speedMult=20;tick();');
+ const bus=run('cockpitCar.id');
+ assert.equal(run('cockpitCar.kind'),'bus');
+ assert.equal(run('developments[cockpitCar.development].name'),'Juniper Commons');
+ assert.match(elements.get('cockpit-car').textContent,/following/);
+ run('for(let i=0;i<150;i++)tick();');
+ assert.equal(run('cockpitCar.id'),bus);
+ run('startSpectate(cars.find(c=>c.kind==="sedan"));tick();');
+ assert.equal(run('cockpitCar.kind'),'sedan');
+ run('stopSpectate();tick();');
+ assert.equal(run('cockpitCar.id'),bus);
+ elements.get('reset').click();
+ run('tick()');
+ assert.equal(run('cockpitCar.id'),bus);
+ run(`cars.splice(cars.findIndex(c=>c.id===${JSON.stringify(bus)}),1);tick();`);
+ assert.equal(run('cockpitCar.kind'),'bus');
+ assert.notEqual(run('cockpitCar.id'),bus);
+}
+console.log('PASS: Driver POV follows one Juniper Commons bus through ticks, spectating and reset, and moves on only when it is removed.');
 {
  const {run,elements}=boot();
  run(`
