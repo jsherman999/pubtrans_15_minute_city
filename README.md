@@ -16,11 +16,11 @@ A browser-only autonomous transit simulation adapted from [pubtrans_solved](http
 
 Scroll through the regional overview, city center, and five neighborhood maps. Each map has a Pause/Resume button in its upper-right corner that controls the whole simulation, including interactive driving. All map buttons and the Controls button stay synchronized. Sticky shortcuts jump between maps and Controls / POV. On desktop, the controls remain in a sidebar; on phones they follow the maps and metrics.
 
-**Auto:** runs immediately at 1×. Change speed, pause/resume, reset the day, adjust population or fleet, and tap a moving vehicle on any map to watch its driver POV. Reset day preserves the geography; refresh randomizes it.
+**Auto:** runs immediately at 1×. Change speed, pause/resume, reset the day, adjust population or fleet, and tap a moving vehicle on any map to watch its driver POV. Otherwise Driver POV rides one bus for the whole simulation: it starts on the Juniper Commons bus, whose neighborhood adjoins the center, and stays with it through depot waits and Reset day. Exiting a tapped vehicle returns to that bus; the view changes bus only if the followed bus is removed from the fleet. Reset day preserves the geography; refresh randomizes it.
 
 **Interactive:** select the mode in Controls, tap a source building and destination on any maps, then return to Controls / POV and press Plan and Drive. Candidate routes, congestion scoring, obstacles, replanning and driver POV work across the region. A cul-de-sac has only one exit, so some origin/destination pairs have fewer than three distinct routes.
 
-The fleet starts with 15 sedans (4 seats), 14 shuttles (8 seats), and five large purple buses (20 seats each), serving 300 simulated people by default (adjustable up to 500). Individual houses are potential origins/destinations, not one person per house. Worker, student, errand and commuter profiles retain their original schedules; suburban residents also generate neighborhood visits. School/train surges, pooling, boarding one passenger per tick, stoplights, stop signs, one-way streets, automatic depot returns, metrics, and inline/pop-out debug logs are retained.
+The fleet starts with 15 sedans (4 seats), 14 shuttles (8 seats), and five large purple buses (20 seats each), serving 450 simulated people by default (adjustable up to 800). Individual houses are potential origins/destinations, not one person per house. Worker, student, errand and commuter profiles retain their original schedules; suburban residents also generate neighborhood visits. School/train surges, pooling, boarding one passenger per tick, stoplights, stop signs, one-way streets, automatic depot returns, metrics, and inline/pop-out debug logs are retained.
 
 Optional Anthropic narration still uses the source app's direct browser API call. Paste a key in Settings; it is held in memory and cleared by refresh. Core simulation needs no API key. The optional paid API call is not covered by the automated tests.
 
@@ -34,7 +34,7 @@ The playback slider repeats complete simulation steps: **1× and 20× produce th
 
 The old calibration moved vehicles at only 3 km/h and counted 18 seconds per boarding passenger at 1×. More seriously, playback speed multiplied the clock and motion but not boarding/stop timers, inflating their simulated duration at higher playback speeds. Both issues are corrected.
 
-Validation with 300 people, default fleet and 100% sharing, across three seeded 12-hour runs at 20×: average rides changed from **122–149 minutes** to **2.2–2.6 minutes**, with **992–1,020 completed riders**. These are overall averages including short city/apartment trips; longer neighborhood or pooled trips can take more time. Tests also compare identical seeded worlds at 1× and 20× and verify physical travel speeds.
+Validation with 300 people, default fleet and 100% sharing, across three seeded 12-hour runs at 20×: average rides changed from **122–149 minutes** to **2.2–2.6 minutes**, with **992–1,020 completed riders**. These are overall averages including short city/apartment trips; longer neighborhood or pooled trips can take more time. With the current 450-person default and 212 downtown units, three seeded 12-hour runs at 20× completed **1,645–1,684 riders**, with **2.7–3.3 minute** average rides, **2.6–3.3 minute** average queues and no riders still waiting at the end of the day. Tests also compare identical seeded worlds at 1× and 20× and verify physical travel speeds.
 
 The chosen speeds are conservative relative to [NACTO urban target-speed guidance](https://nacto.org/publication/urban-street-design-guide/design-controls/design-speed/), which discusses 20 mph neighborhood zones. Boarding is modeled at 3 seconds per person; [NACTO's boarding guidance](https://nacto.org/publication/better-boarding-better-buses/) explains why dwell time must be accounted for separately from driving.
 
@@ -48,15 +48,31 @@ The chosen speeds are conservative relative to [NACTO urban target-speed guidanc
 
 ## City apartments and defaults
 
-Riverbend school has been replaced by **Riverbend Apts**, a 100-apartment residential building. Home assignment and residential event destinations are weighted by housing units, so the building contributes 100 potential homes. Its residents count toward the selected population, rather than adding 100 people on top. Hillside is the remaining school; Riverbend school events have been removed. The apartment building has a distinct map color and a taller, windowed POV appearance.
+Downtown has **212 housing units** in five buildings: **Riverbend Apts** (100 apartments), **Birch Hgts** and **Oak Hgts** (40 apartments each), **Cedar Block** (24 apartments) and **Maple Row** (8 townhouses). With the 120 suburban houses, that makes 332 homes. Home assignment and residential event destinations are weighted by housing units, so each unit is one potential home. Residents count toward the selected population rather than being added on top.
 
-New page loads start with **300 people, 15 sedans, 14 shuttles, five large buses and 100% ride sharing**. Reset day retains the current live fleet/demand settings. Fleet & demand uses fixed columns so buttons and counts remain aligned when digits change.
+The default population is 450, which keeps about 1.35 residents per home, the ratio of the earlier 300-person default across 224 homes. The suburbs keep about 160 residents, and downtown has about 290 on a typical load (Riverbend about 135, each 40-unit building about 54, Cedar Block about 33, Maple Row about 11). Assignment is random, so exact counts vary per page load. Hillside is the remaining school; Riverbend school events have been removed. Downtown housing shares one map color and lists its unit count under the building name.
+
+New page loads start with **450 people, 15 sedans, 14 shuttles, five large buses and 100% ride sharing**. Reset day retains the current live fleet/demand settings. Fleet & demand uses fixed columns so buttons and counts remain aligned when digits change.
 
 ## Houses and passenger transfers
 
 Each neighborhood has four cul-de-sacs, now with two homes served at each turning circle. Adding one home to each cul-de-sac increases each development from 20 to 24 homes, for 120 suburban residences overall.
 
-In Driver POV, residential units are low ranch houses with varied exterior colors, proportions, gabled/hipped roofs, doors, windows and stoops. Commercial buildings retain their original taller block appearance.
+In Driver POV, suburban homes are low ranch houses with varied exterior colors, proportions, gabled/hipped roofs, doors, windows and stoops.
+
+## Downtown buildings
+
+Every downtown building has its own Driver POV design, with named signs readable up close:
+
+- **Central Stn:** brick head house with arched windows, a clock tower and a platform canopy over the through tracks.
+- **NorthCo:** stepped limestone tower on a podium with a gold mast. **EastBank:** blue glass curtain-wall tower with a lit lobby and slanted crown.
+- **SouthLabs:** low white lab with ribbon windows, rooftop plant, exhaust stacks and a parking lot. **WestWorks:** converted brick factory with loft windows, sawtooth roof and chimney.
+- **Hillside:** brick school with a pedimented entrance and clock, playground, lawn and flagpole.
+- **GreenMart:** supermarket with a lit glass front, striped awning and parking. **CityFoods:** corner market with awnings, produce stands, flats above and a water tank.
+- **Police / Fire:** three-bay fire hall with hose tower beside a blue-banded police station.
+- **Riverbend Apts:** U-shaped block with balconies around a courtyard garden. **Birch Hgts:** white mid-rise with glass balconies, penthouse and podium roof garden. **Oak Hgts:** brick building with bay windows and a slate mansard. **Cedar Block:** timber-clad L-shaped block. **Maple Row:** eight townhouses with stoops and mixed cornices and gables.
+
+Top-down maps keep the type colors and add each building's roof plan: setbacks, rooftop equipment, lawns, lots and trees.
 
 Each actual passenger transfer creates a small moving stick figure between the building and the vehicle stop: yellow for boarding and green for alighting. Group dropoffs stagger the figures for readability. Boarding figures are synchronized with a nine-simulated-second departure pause, scaled to playback speed, and end before the vehicle leaves. Effects also appear in Driver POV when within its field of view, and Reset day clears them. The animations are visual only and do not alter passenger accounting or boarding timing.
 
