@@ -221,7 +221,7 @@ console.log('PASS: baseline off, mid-edge continuity, outbound-to-return inserti
    if(!sharedPickups || !completedTrips.length)throw Error('sharing never ran');
  `);
 }
-console.log('PASS: 500-person shared simulation, road continuity, capacity, exclusive request ownership and completed rides.');
+console.log('PASS: maximum-population shared simulation, road continuity, capacity, exclusive request ownership and completed rides.');
 {
  const {run}=boot();
  assert.equal(run('developments.length'),5);
@@ -241,22 +241,22 @@ console.log('PASS: 500-person shared simulation, road continuity, capacity, excl
      if(!transferPosition(effect,effect.start+effect.duration/2) || transferPosition(effect,effect.start-1) || transferPosition(effect,effect.start+effect.duration+1))throw Error('transfer lifetime incorrect');
    }
    passengerTransfers.length=0;
-   for(const b of buildingsByType.residential) drawRanchFPV(b,{x:b.x||0,y:(b.y||0)-40,cos:1,sin:0});
+   for(const b of buildingsByType.residential.filter(b=>b.development!=null)) drawRanchFPV(b,{x:b.x,y:b.y-40,cos:1,sin:0});
  `);
 }
 console.log('PASS: fifth connected neighborhood within one block, two homes at every cul-de-sac, ranch rendering and exact per-person transfer effects.');
 {
  const {run,elements}=boot();
- assert.equal(run('humans.length'),300);
+ assert.equal(run('humans.length'),450);
  assert.equal(run('countCars("sedan")'),15);
  assert.equal(run('countCars("shuttle")'),14);
  assert.equal(run('countCars("bus")'),5);
  assert.equal(run('rideSharing'),100);
  assert.equal(run('buildingsByType.school.length'),1);
- assert.equal(run('buildingByName("Riverbend Apts").apartments'),100);
+ assert.equal(run('buildingByName("Riverbend Apts").units'),100);
  assert.equal(run('buildingsByType.residential.includes(buildingByName("Riverbend Apts"))'),true);
  assert.equal(run('eventSchedule.every(e=>[e.pickup,e.dropoff].every(n=>n==="residential" || buildingByName(n)))'),true);
- assert.equal(elements.get('ctl-pop').textContent,300);
+ assert.equal(elements.get('ctl-pop').textContent,450);
  assert.equal(elements.get('ctl-sed').textContent,15);
 }
 console.log('PASS: startup defaults and residential apartment/school event configuration.');

@@ -220,7 +220,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
       <div class="leg"><span class="sw" style="background:#c00000"></span>Rail stations</div>
       <div class="leg"><span class="sw" style="background:#f8fafc;border:2px solid #2563eb"></span>Train (cap 60)</div>
       <div class="leg"><span class="sw" style="background:#9a9a9a"></span>Residential</div>
-      <div class="leg"><span class="sw" style="background:#c29aca"></span>Apartments (100 units)</div>
+      <div class="leg"><span class="sw" style="background:#c29aca"></span><span id="legend-city-homes">Downtown apartments &amp; townhouses</span></div>
       <div class="leg"><span class="sw" style="background:#14b8a6"></span>Sedan (cap 4)</div>
       <div class="leg"><span class="sw" style="background:#f97316"></span>Shuttle (cap 8)</div>
       <div class="leg"><span class="sw" style="background:#a78bfa"></span>Large bus (cap 20)</div>
@@ -292,7 +292,7 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <section class="hud">
       <h3>Live state</h3>
       <div class="row"><span>Time</span><span id="clock">06:30</span></div>
-      <div class="row"><span>Population</span><span id="population">300</span></div>
+      <div class="row"><span>Population</span><span id="population">450</span></div>
       <div class="row"><span>Active rides</span><span id="active-rides">0</span></div>
       <div class="row"><span>Train aboard</span><span id="train-aboard">No train</span></div>
       <div class="row"><span>Rail waiting</span><span id="rail-waiting">Central 0 · P&amp;R 0</span></div>
@@ -323,13 +323,13 @@ button {min-height:36px;} .stepper-btns button {width:36px;height:36px;}
     <section id="cockpit-section">
       <h3>Driver POV <span id="cockpit-car" class="cockpit-car"></span></h3>
       <div class="cockpit-wrap"><canvas id="cockpit" width="640" height="640"></canvas></div>
-      <p class="hint small" id="cockpit-cap" hidden>Tap any active car on the grid to ride along — or watch a featured car.</p>
+      <p class="hint small" id="cockpit-cap" hidden>Driver POV rides one bus all day. Tap any active car to ride along instead; exiting returns to the bus.</p>
     </section>
 
     <section id="sim-controls">
       <h3>Fleet &amp; demand</h3>
       <div class="stepper"><span>Population</span>
-        <div class="stepper-btns"><button data-act="pop-dec">−</button><span id="ctl-pop">300</span><span aria-hidden="true"></span><button data-act="pop-inc">+</button></div>
+        <div class="stepper-btns"><button data-act="pop-dec">−</button><span id="ctl-pop">450</span><span aria-hidden="true"></span><button data-act="pop-inc">+</button></div>
       </div>
       <div class="stepper"><span>Sedans (cap 4)</span>
         <div class="stepper-btns"><button data-act="sed-dec">−</button><span id="ctl-sed">15</span><span class="active-count" id="ctl-sed-active" title="currently active (out of the depot)">0</span><button data-act="sed-inc">+</button></div>
@@ -380,7 +380,7 @@ const BLOCKS = GRID_N - 1;        // 6x6 blocks
 const CANVAS = 780;
 const PADDING = 36;
 const CELL = (CANVAS - PADDING * 2) / BLOCKS;
-const POPULATION = 300;
+const POPULATION = 450;
 const N_SEDANS = 15;
 const N_SHUTTLES = 14;
 const K_PATHS = 3;
@@ -422,18 +422,18 @@ const BUILDINGS = [
   { col:0,row:5,type:"employer",name:"SouthLabs" },
   { col:5,row:5,type:"employer",name:"WestWorks" },
   { col:1,row:1,type:"school",name:"Hillside" },
-  { col:4,row:4,type:"residential",name:"Riverbend Apts",apartments:100 },
+  { col:4,row:4,type:"residential",name:"Riverbend Apts",units:100,unitLabel:"apartments" },
   { col:1,row:3,type:"grocery",name:"GreenMart" },
   { col:4,row:2,type:"grocery",name:"CityFoods" },
   { col:0,row:0,type:"station",name:"Central Stn" },
-  { col:2,row:4,type:"residential",name:"Maple Row" },
-  { col:3,row:5,type:"residential",name:"Cedar Block" },
-  { col:0,row:2,type:"residential",name:"Birch Hgts" },
-  { col:5,row:3,type:"residential",name:"Oak Hgts" },
+  { col:2,row:4,type:"residential",name:"Maple Row",units:8,unitLabel:"townhouses" },
+  { col:3,row:5,type:"residential",name:"Cedar Block",units:24,unitLabel:"apartments" },
+  { col:0,row:2,type:"residential",name:"Birch Hgts",units:40,unitLabel:"apartments" },
+  { col:5,row:3,type:"residential",name:"Oak Hgts",units:40,unitLabel:"apartments" },
 ];
 const buildingsByType = { employer: [], grocery: [], school: [], station: [], residential: [], emergency: [] };
 for (const b of BUILDINGS) {
-  b.color = b.apartments ? "#c29aca" : COLORS[b.type];
+  b.color = b.units ? "#c29aca" : COLORS[b.type];
   b.accessId = nodeId(b.col, b.row);
   buildingsByType[b.type].push(b);
 }
@@ -894,12 +894,12 @@ function clearDebugLogs() {
 const humans = [];
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-// Apartment units contribute homes to the population distribution, rather
-// than treating a 100-unit building as a single detached residence.
+// Downtown housing units contribute homes to the population distribution,
+// rather than treating a multi-unit building as a single detached residence.
 function pickResidential() {
   const homes=buildingsByType.residential;
-  let choice=Math.random()*homes.reduce((sum,b)=>sum+(b.apartments || 1),0);
-  for(const b of homes) {choice-=b.apartments || 1;if(choice<0)return b;}
+  let choice=Math.random()*homes.reduce((sum,b)=>sum+(b.units || 1),0);
+  for(const b of homes) {choice-=b.units || 1;if(choice<0)return b;}
   return homes[homes.length-1];
 }
 
@@ -996,7 +996,7 @@ let nextReqId = 1;
 let pooledCount = 0;
 let waitingByBldg = new Map();      // building -> # people waiting there for pickup
 let cockpitCar = null;              // car the sidebar cockpit is currently showing
-let cockpitFeatured = false;        // true when cockpitCar is auto-featured (not user-selected)
+let cockpitFollowing = false;       // true when cockpitCar is the followed bus (not user-selected)
 let sedanSeq = N_SEDANS;            // id sequences so live-added cars stay unique
 let shuttleSeq = N_SHUTTLES;
 let busSeq = developments.length;
@@ -1238,7 +1238,7 @@ function tickEmergencyVehicles() {
   }
   for(let i=cars.length-1;i>=0;i--)if(cars[i].state==="human_done" || cars[i].state==="response_done" || (cars[i].kind==="recovery" && cars[i].state==="idle")) {
     const car=cars[i];releaseAllClaims(car);
-    if(car===spectateCar)stopSpectate();if(car===featuredCar)featuredCar=null;if(car===cockpitCar)cockpitCar=null;
+    if(car===spectateCar)stopSpectate();if(car===cockpitCar)cockpitCar=null;
     cars.splice(i,1);
   }
   for(let i=incidents.length-1;i>=0;i--)if(incidents[i].finished)incidents.splice(i,1);
@@ -3071,18 +3071,26 @@ function drawBuildings() {
     // building
     ctx.fillStyle = b.color;
     ctx.fillRect(bx, by, BSIZE, BSIZE);
+    const design = buildingDesigns.get(b);
+    if (design) drawDesignPlan(b, design, bx, by, BSIZE);
     // light border
     ctx.strokeStyle = "rgba(255,255,255,0.10)";
     ctx.lineWidth = 1;
     ctx.strokeRect(bx + 0.5, by + 0.5, BSIZE - 1, BSIZE - 1);
-    // label
+    // label, haloed in the building color so it stays legible over roof plans
     ctx.fillStyle = "#0f1014";
     ctx.font = "bold 9px -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     if(viewScale>.45) {
-      ctx.fillText(b===parkRide ? "Park & Ride" : b.development != null ? b.name.split(" ").pop() : b.name, bx + BSIZE / 2, by + BSIZE / 2 - (b.apartments ? 6 : 0));
-      if(b.apartments)ctx.fillText(b.apartments+" apartments",bx+BSIZE/2,by+BSIZE/2+8);
+      const lines=[b===parkRide ? "Park & Ride" : b.development != null ? b.name.split(" ").pop() : b.name];
+      if(b.units)lines.push(b.units+" "+b.unitLabel);
+      ctx.strokeStyle=b.color;ctx.lineWidth=3;ctx.lineJoin="round";
+      lines.forEach((text,i)=>{
+        const y=by+BSIZE/2+(i-(lines.length-1)/2)*14;
+        if(design)ctx.strokeText(text,bx+BSIZE/2,y);
+        ctx.fillText(text,bx+BSIZE/2,y);
+      });
     }
   }
 }
@@ -3243,8 +3251,7 @@ const fpvCanvas = document.getElementById("fpv");
 const fpvCtx = fpvCanvas.getContext("2d");
 const cockpitCanvas = document.getElementById("cockpit");
 const cockpitCtx = cockpitCanvas.getContext("2d");
-let featuredCar = null;
-let featuredTimer = 0;
+let followedBus = null;            // bus Driver POV rides whenever no car is selected
 // Perspective projection uses fixed logical coordinates, not backing pixels.
 const FPV_W = 640;
 const FPV_H = 640;
@@ -3404,34 +3411,26 @@ function renderFPV(focalCar = getFocalCar()) {
   drawEventBanner(fpvCtx, FPV_W, FPV_H);
 }
 
-// Pick a moving car worth watching when the user hasn't selected one.
-function pickFeaturedCar() {
-  let best = null, bestScore = -1;
-  for (const c of cars) {
-    if (c.heading == null) continue;
-    if (c.state !== "enroute_dropoff" && c.state !== "enroute_pickup") continue;
-    const score = (c.state === "enroute_dropoff" ? 10 : 0) + c.riders.length;
-    if (score > bestScore) { bestScore = score; best = c; }
-  }
-  return best;
+// Driver POV rides one bus for the whole simulation, including depot waits
+// and Reset day. It starts on the bus of the development that adjoins the
+// center, so the ride passes downtown, and changes bus only if that one is
+// removed from the fleet.
+function pickFollowedBus() {
+  const buses=cars.filter(c=>c.kind==="bus");
+  return buses.find(c=>!c.retiring && c.development===developments.length-1) ||
+    buses.find(c=>!c.retiring) || buses[0] || null;
 }
 
-function isMoving(c) {
-  return c && c.heading != null && (c.state === "enroute_dropoff" || c.state === "enroute_pickup");
-}
-
-// Choose the car the cockpit follows: user-selected first, else an auto-featured one.
-// Run before render() so the grid highlight can key off the same car.
+// Choose the car the cockpit shows: a tapped car or interactive trip first,
+// otherwise the followed bus. Run before render() so the grid highlight can
+// key off the same car.
 function updateCockpitFocal() {
   let focal = spectateCar || ix.drivingCar;
-  cockpitFeatured = false;
+  cockpitFollowing = false;
   if (!focal) {
-    if (!isMoving(featuredCar) || --featuredTimer <= 0) {
-      featuredCar = pickFeaturedCar();
-      featuredTimer = 150;
-    }
-    focal = featuredCar;
-    cockpitFeatured = true;
+    if (!cars.includes(followedBus)) followedBus = pickFollowedBus();
+    focal = followedBus;
+    cockpitFollowing = !!focal;
   }
   cockpitCar = focal;
 }
@@ -3452,12 +3451,12 @@ function renderCockpit() {
   const capEl = document.getElementById("cockpit-cap");
   capEl.hidden=!focal;
   if (focal) {
-    labelEl.textContent = "· " + focal.id + (cockpitFeatured ? " · featured" : "");
+    labelEl.textContent = "· " + focal.id + (cockpitFollowing ? " · following" : "");
     capEl.textContent = focal.state.replace(/_/g, " ") + " · " +
       focal.riders.length + "/" + focal.capacity + " aboard · " + focal.kind + (focal.kind === "bus" ? " · " + developments[focal.development].name + (focal.retiring ? " · retiring after trip" : "") : "");
   } else {
     labelEl.textContent = "";
-    capEl.textContent = "Cockpit lights up once cars start moving — or tap any active car to ride along.";
+    capEl.textContent = "No bus in the fleet to follow — add a bus, or tap any active car to ride along.";
   }
 }
 
@@ -3517,7 +3516,9 @@ function drawWaitingFPV(cam) {
     const v = toCamSpace(wx, wy, 0, cam);             // ground at building center
     if (v.fwd < FPV_NEAR || v.fwd > FPV_FAR * 1.4) continue;
     if (Math.abs(v.right) / v.fwd > 1.7) continue;
-    const ve = toCamSpace(wx, wy, (b.type==="residential" && !b.apartments ? 18 : FPV_BLDG_HEIGHT * 0.55), cam); // anchor on the building face
+    const design = buildingDesigns.get(b);
+    const faceZ = design ? Math.min(36, design.height * 0.6) : b.type==="residential" ? 18 : FPV_BLDG_HEIGHT * 0.55;
+    const ve = toCamSpace(wx, wy, faceZ, cam); // anchor on the building face
     markers.push({ depth: v.fwd, anchor: projectCam(ve), count });
   }
   markers.sort((p, q) => q.depth - p.depth);          // far to near
@@ -3741,6 +3742,579 @@ function drawRanchFPV(b,cam) {
   poly([[-3,-d,0],[3,-d,0],[3,-d-3,0],[-3,-d-3,0]],"#b4afa3");
 }
 
+// ============================================================
+// Downtown building designs (Driver POV and map roof plans)
+// ============================================================
+// Each downtown building is a few convex parts in block-local map units:
+// x east, y south, z up from the block center. Designs are written facing
+// south, then turned by quarter turns (1 west, 2 north, 3 east), and parts
+// stay within ±44, the Driver POV road inset. Standing parts never overlap
+// on all three axes, so a separating plane always decides their draw order.
+// Flat decorations (windows, doors, signs, balconies, awnings) belong to one
+// face and draw right after it. A name-seeded generator keeps styling out of
+// the simulation's Math.random sequence.
+const buildingDesigns=new Map();
+const DESIGN_LIGHT=[-.45,-.6,.66].map((c,_,v)=>c/Math.hypot(...v));
+const FPV_DETAIL_DIST=CELL*2.8;
+const WINDOW_DARK="#27313b",WINDOW_LIT="#f2d58f",OFFICE_LIT="#cfe6f2";
+
+function designRandom(text) {
+  let a=[...text].reduce((h,ch)=>Math.imul(h^ch.charCodeAt(0),16777619),2166136261);
+  return ()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};
+}
+const addScaled3=(a,b,s=1)=>[a[0]+b[0]*s,a[1]+b[1]*s,a[2]+b[2]*s];
+const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross3=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const unit3=a=>{const l=Math.hypot(...a)||1;return a.map(c=>c/l);};
+const darkerHex=(hex,f)=>"#"+[1,3,5].map(i=>Math.round(parseInt(hex.slice(i,i+2),16)*f).toString(16).padStart(2,"0")).join("");
+
+function designKit(name) {
+  const parts=[],rand=designRandom(name);
+  const SIDES={s:[0,1,0],n:[0,-1,0],e:[1,0,0],w:[-1,0,0],top:[0,0,1]};
+  function part(polys,color,opts={}) {
+    const all=polys.flat(),lo=[0,1,2].map(k=>Math.min(...all.map(p=>p[k]))),hi=[0,1,2].map(k=>Math.max(...all.map(p=>p[k])));
+    const mid=lo.map((c,k)=>(c+hi[k])/2),p={color,lo,hi,ground:hi[2]<=.5,plan:opts.plan,faces:[]};
+    for(const pts of polys) {
+      let n=unit3(cross3(addScaled3(pts[1],pts[0],-1),addScaled3(pts[2],pts[0],-1)));
+      const c=[0,1,2].map(k=>pts.reduce((s,q)=>s+q[k],0)/pts.length);
+      if(dot3(n,addScaled3(c,mid,-1))<0)n=n.map(x=>-x);
+      p.faces.push({pts,n,color,deco:[],signs:[]});
+    }
+    parts.push(p);return p;
+  }
+  // Face frame: u runs left to right as seen from outside, v runs up the face
+  // (north on a roof top), and `out` offsets along the outward normal.
+  function frame(f) {
+    if(f.U)return f;
+    const flat=Math.abs(f.n[2])>.99;
+    f.U=flat?[1,0,0]:unit3(cross3(f.n,[0,0,1]));f.V=flat?[0,1,0]:cross3(f.U,f.n);
+    const us=f.pts.map(p=>dot3(p,f.U)),vs=f.pts.map(p=>dot3(p,f.V));
+    f.u0=Math.min(...us);f.v0=Math.min(...vs);f.w=Math.max(...us)-f.u0;f.h=Math.max(...vs)-f.v0;f.d=dot3(f.pts[0],f.n);
+    return f;
+  }
+  const at=(f,u,v,out=0)=>{frame(f);return addScaled3(addScaled3(addScaled3([0,0,0],f.U,u+f.u0),f.V,v+f.v0),f.n,f.d+out);};
+  const rect=(f,u0,v0,u1,v1,out=0)=>[at(f,u0,v0,out),at(f,u1,v0,out),at(f,u1,v1,out),at(f,u0,v1,out)];
+  const side=(p,dir)=>p.faces.reduce((best,f)=>dot3(f.n,SIDES[dir])>dot3(best.n,SIDES[dir])?f:best);
+  function deco(f,color,polys,opts={}) {if(polys.length)f.deco.push({color,polys,lit:!!opts.lit,fine:!!opts.fine});}
+  const band=(f,v0,v1,color,opts={})=>deco(frame(f),color,[rect(f,opts.u0??0,v0,opts.u1??f.w,v1,opts.out||0)],opts);
+  // Rows of windows centered on the face, split into dark and lit panes.
+  function windows(f,{v0,rows,step=0,w,h,bay,lit=.3,glass=WINDOW_DARK,light=WINDOW_LIT,frameColor,skip,out=.05}) {
+    frame(f);
+    const cols=Math.max(1,Math.floor(f.w/bay)),start=(f.w-cols*bay)/2+(bay-w)/2,dark=[],on=[],frames=[];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++) {
+      if(skip?.(r,c,cols))continue;
+      const u=start+c*bay,v=v0+r*step;
+      if(frameColor)frames.push(rect(f,u-.7,v-.7,u+w+.7,v+h+.7,out*.5));
+      (rand()<lit?on:dark).push(rect(f,u,v,u+w,v+h,out));
+    }
+    deco(f,frameColor,frames,{fine:true});deco(f,glass,dark);deco(f,light,on,{lit:true});
+  }
+  // Signs render their text in perspective when the face is near and visible.
+  function sign(f,u0,u1,v0,v1,text,fg,bg,out=.3) {
+    if(bg)deco(f,bg,[rect(f,u0,v0,u1,v1,out)]);
+    f.signs.push({a:at(f,u0,v1,out+.05),b:at(f,u1,v1,out+.05),c:at(f,u0,v0,out+.05),w:u1-u0,h:v1-v0,text,fg});
+  }
+  const centeredSign=(f,width,v0,v1,text,fg,bg)=>sign(frame(f),(f.w-width)/2,(f.w+width)/2,v0,v1,text,fg,bg);
+  function awning(f,u0,u1,v,depth,drop,colors,stripe=4) {
+    const sets=colors.map(()=>[]);
+    for(let u=u0,i=0;u<u1-1e-6;u+=stripe,i++) {
+      const e=Math.min(u1,u+stripe),set=sets[i%colors.length];
+      set.push([at(f,u,v),at(f,e,v),at(f,e,v-drop,depth),at(f,u,v-drop,depth)],rect(f,u,v-drop-1.6,e,v-drop,depth));
+    }
+    colors.forEach((c,i)=>deco(f,c,sets[i]));
+  }
+  function balconies(f,{v0,rows,step,w,bay,depth=3,rail=3,slab="#c9c4ba",railColor="#8fb0bf",skip}) {
+    frame(f);
+    const cols=Math.max(1,Math.floor(f.w/bay)),start=(f.w-cols*bay)/2+(bay-w)/2,slabs=[],rails=[];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++) {
+      if(skip?.(r,c))continue;
+      const u=start+c*bay,v=v0+r*step;
+      slabs.push([at(f,u,v),at(f,u+w,v),at(f,u+w,v,depth),at(f,u,v,depth)]);rails.push(rect(f,u,v,u+w,v+rail,depth));
+    }
+    deco(f,slab,slabs);deco(f,railColor,rails);
+  }
+  function cornice(f,v,depth,color) {
+    frame(f);
+    deco(f,darkerHex(color,.62),[[at(f,0,v-2),at(f,f.w,v-2),at(f,f.w,v-2,depth),at(f,0,v-2,depth)]]);
+    deco(f,color,[rect(f,0,v-2,f.w,v,depth)]);
+  }
+  // Projecting bay window: two angled cheeks, a front and windows per floor.
+  function bayWindow(f,uc,w,v0,v1,out,color,floors) {
+    const a=uc-w/2,b=uc+w/2,i=1.6;
+    deco(f,darkerHex(color,.8),[[at(f,a,v0),at(f,a+i,v0,out),at(f,a+i,v1,out),at(f,a,v1)],[at(f,b,v0),at(f,b-i,v0,out),at(f,b-i,v1,out),at(f,b,v1)]]);
+    deco(f,color,[rect(f,a+i,v0,b-i,v1,out)]);
+    const panes=[];for(const [z0,z1] of floors)panes.push(rect(f,a+i+.8,z0,b-i-.8,z1,out+.05));
+    deco(f,WINDOW_LIT,panes.filter(()=>rand()<.45),{lit:true});
+  }
+  function arch(f,uc,w,v0,v1,color,lit) {
+    const pts=[at(f,uc-w/2,v0),at(f,uc+w/2,v0)];
+    for(let k=0;k<=6;k++){const a=k*Math.PI/6;pts.push(at(f,uc+Math.cos(a)*w/2,v1+Math.sin(a)*w/2));}
+    deco(f,color,[pts],{lit});
+  }
+  function clock(f,uc,vc,r) {
+    deco(f,"#f3ecd8",[Array.from({length:10},(_,k)=>{const a=k*Math.PI/5;return at(f,uc+Math.cos(a)*r,vc+Math.sin(a)*r,.2);})]);
+    deco(f,"#23262b",[rect(f,uc-.3,vc,uc+.3,vc+r*.8,.3),rect(f,uc,vc-.3,uc+r*.6,vc+.3,.3)]);
+  }
+  // Solids. Every builder returns a part whose faces can be decorated.
+  function box(x0,y0,z0,x1,y1,z1,color,opts) {
+    if(z1-z0<.6)return part([[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]],color,opts);
+    const polys=[[[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]],[[x1,y0,z0],[x0,y0,z0],[x0,y0,z1],[x1,y0,z1]],
+      [[x1,y1,z0],[x1,y0,z0],[x1,y0,z1],[x1,y1,z1]],[[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1]],
+      [[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]];
+    if(z0>2)polys.push([[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]]);
+    return part(polys,color,opts);
+  }
+  // Convex (across, z) profile extruded along the x or y axis: gables, vaults, sawtooth.
+  function extrude(axis,a0,a1,profile,color) {
+    const P=(a,q)=>axis==="x"?[a,q[0],q[1]]:[q[0],a,q[1]];
+    const polys=profile.map((q,i)=>{const r=profile[(i+1)%profile.length];return [P(a0,q),P(a1,q),P(a1,r),P(a0,r)];});
+    polys.push(profile.map(q=>P(a0,q)),profile.map(q=>P(a1,q)));
+    return part(polys,color);
+  }
+  function frustum(x0,y0,z0,x1,y1,z1,inset,color) {
+    const [a,b,c,d]=[x0+inset,y0+inset,x1-inset,y1-inset];
+    return part([[[x0,y1,z0],[x1,y1,z0],[c,d,z1],[a,d,z1]],[[x1,y0,z0],[x0,y0,z0],[a,b,z1],[c,b,z1]],
+      [[x1,y1,z0],[x1,y0,z0],[c,b,z1],[c,d,z1]],[[x0,y0,z0],[x0,y1,z0],[a,d,z1],[a,b,z1]],[[a,b,z1],[c,b,z1],[c,d,z1],[a,d,z1]]],color);
+  }
+  function pyramid(x0,y0,z0,x1,y1,z1,color) {
+    const apex=[(x0+x1)/2,(y0+y1)/2,z1],c=[[x0,y1,z0],[x1,y1,z0],[x1,y0,z0],[x0,y0,z0]];
+    return part(c.map((p,i)=>[p,c[(i+1)%4],apex]),color);
+  }
+  const ring=(cx,cy,r,z)=>Array.from({length:8},(_,i)=>{const a=(i+.5)*Math.PI/4;return [cx+Math.cos(a)*r,cy+Math.sin(a)*r,z];});
+  function oct(cx,cy,r,z0,z1,color) {
+    const b=ring(cx,cy,r,z0),t=ring(cx,cy,r,z1),polys=b.map((p,i)=>[p,b[(i+1)%8],t[(i+1)%8],t[i]]);
+    polys.push(t);if(z0>2)polys.push(b);
+    return part(polys,color);
+  }
+  function cone(cx,cy,r,z0,z1,color) {const b=ring(cx,cy,r,z0),apex=[cx,cy,z1];return part(b.map((p,i)=>[p,b[(i+1)%8],apex]),color);}
+  function tree(x,y,s=1) {
+    box(x-.7*s,y-.7*s,0,x+.7*s,y+.7*s,4*s,"#4a3a2c",{plan:false});
+    const mid=ring(x,y,5.5*s,9*s),top=[x,y,15*s],bottom=[x,y,4*s];
+    part(mid.flatMap((p,i)=>[[p,mid[(i+1)%8],top],[mid[(i+1)%8],p,bottom]]),"#2f5b38",{plan:"tree"});
+  }
+  function roofColor(p,color) {for(const f of p.faces)if(f.n[2]>.2)f.color=color;}
+  function car(x,y,color,alongY=true) {
+    const c=alongY?box(x-2.5,y-4.5,0,x+2.5,y+4.5,4,color):box(x-4.5,y-2.5,0,x+4.5,y+2.5,4,color);
+    const t=side(c,"top");deco(t,"#1c2530",[alongY?rect(t,.7,2.2,4.3,6.8,.05):rect(t,2.2,.7,6.8,4.3,.05)]);
+  }
+  return {parts,rand,part,frame,at,rect,side,deco,band,windows,sign,centeredSign,awning,balconies,cornice,bayWindow,arch,clock,
+    box,extrude,frustum,pyramid,oct,cone,tree,roofColor,car};
+}
+
+const DOWNTOWN_DESIGNS={
+  // Brick head house with arched windows and a clock tower; a platform canopy
+  // spans the through tracks, which enter from the north and leave east.
+  "Central Stn":{turn:0,height:28,build(k){
+    const brick="#8e3b32",copper="#4f8070",stone="#d9ccb2";
+    k.box(10,-26,0,44,-21,2,"#8f9296");k.box(-14,21,0,44,26,2,"#8f9296");
+    k.box(-14,-27,17,44,27,19,"#59616c");
+    for(const x of [-10,16,40])for(const y of [-25.5,24.5])
+      k.box(x-1,y-1,(y>0||x>10)?2:0,x+1,y+1,17,"#3b4048",{plan:false});
+    const hall=k.box(-30,27,0,44,44,28,brick),front=k.side(hall,"s"),back=k.side(hall,"n");
+    for(const u of [12,62])k.arch(front,u,12,3,16,"#f0dfaa",true);
+    k.arch(front,37,12,9,16,"#f0dfaa",true);
+    k.deco(front,"#3a2a22",[k.rect(front,32,0,42,8.5,.1)]);
+    k.sign(front,14,60,22.5,26.5,"CENTRAL STATION","#7a2a22",stone);
+    k.windows(back,{v0:5,rows:2,step:10,w:6,h:7,bay:10,lit:.6});
+    k.extrude("x",-30,44,[[27,28],[44,28],[41.5,33],[35.5,35],[29.5,33]],copper);
+    const tower=k.box(-44,22,0,-30,44,54,brick);
+    for(const d of ["s","n","e","w"]){const f=k.side(tower,d);k.clock(f,f.w/2,45,4.2);k.windows(f,{v0:8,rows:3,step:10,w:2.5,h:6,bay:14,lit:.5});}
+    k.pyramid(-44,22,54,-30,44,66,copper);
+  }},
+  // Stepped limestone office tower on a podium, crowned by a gold mast.
+  "NorthCo":{turn:0,height:28,build(k){
+    const stone="#c2b59b",glass="#23303d",gold="#e3c77a";
+    const podium=k.box(-44,-44,0,44,44,28,stone);
+    for(const d of ["s","n","e","w"])k.windows(k.side(podium,d),{v0:4,rows:2,step:11,w:7,h:7,bay:11,lit:.45,glass,light:OFFICE_LIT,
+      skip:d==="s"?(r,c,n)=>r===0&&Math.abs(c-(n-1)/2)<1:null});
+    const front=k.side(podium,"s");
+    k.deco(front,"#2d241b",[k.rect(front,34,0,54,11,.1)]);k.deco(front,"#f0d9a0",[k.rect(front,36,1,42.5,10,.15),k.rect(front,45.5,1,52,10,.15)],{lit:true});
+    k.sign(front,24,64,21.5,26.5,"NorthCo",gold,"#1f2a36");
+    const tower=k.box(-30,-30,28,30,30,100,"#cdc2a9"),tier=k.box(-19,-19,100,19,19,118,"#d3c9b1");
+    for(const d of ["s","n","e","w"]) {
+      k.windows(k.side(tower,d),{v0:4,rows:8,step:9,w:4,h:6,bay:7.5,lit:.35,glass,light:OFFICE_LIT});
+      k.band(k.side(tower,d),69,72,"#e4dac4");
+      k.windows(k.side(tier,d),{v0:4,rows:2,step:8,w:4,h:5,bay:7.5,lit:.5,glass,light:OFFICE_LIT});
+    }
+    k.box(-10,-10,118,10,10,126,"#dcd3bd");
+    k.box(-1.5,-1.5,126,1.5,1.5,148,gold,{plan:false});
+  }},
+  // Blue glass curtain-wall tower over a lit lobby, with a slanted crown.
+  "EastBank":{turn:0,height:96,build(k){
+    k.box(-44,-44,0,44,44,.4,"#6d6a64");
+    const lobby=k.box(-38,-38,0,38,38,14,"#1d2a36");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(lobby,d);
+      k.deco(f,"#d9ecf5",[k.rect(f,2,1,f.w-2,11,.05)],{lit:true});
+      k.deco(f,"#e9e0cc",Array.from({length:9},(_,i)=>k.rect(f,i*9.3+.5,0,i*9.3+2.2,14,.2)));
+    }
+    const lobbyFront=k.side(lobby,"s");
+    k.deco(lobbyFront,"#0f1720",[k.rect(lobbyFront,31,0,45,9,.25)]);
+    k.centeredSign(lobbyFront,32,10.8,13.6,"EastBank","#9fd3ff","#0f1720");
+    const tower=k.box(-36,-36,14,36,36,96,"#2e5373");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(tower,d),lit=[];
+      k.deco(f,"#1b3144",Array.from({length:9},(_,i)=>k.rect(f,0,i*9+6.5,f.w,i*9+9,.05)));
+      for(let r=0;r<9;r++)for(let c=0;c<8;c++)if(k.rand()<.3)lit.push(k.rect(f,c*9+.6,r*9+.6,c*9+8.4,r*9+6.2,.05));
+      k.deco(f,OFFICE_LIT,lit,{lit:true});
+      k.deco(f,"#9fb8c9",Array.from({length:7},(_,i)=>k.rect(f,(i+1)*9-.35,0,(i+1)*9+.35,f.h,.1)),{fine:true});
+    }
+    k.extrude("x",-36,36,[[-36,96],[36,96],[36,104],[-36,114]],"#4d7699");
+  }},
+  // Low white research lab with ribbon windows, rooftop plant and exhaust stacks.
+  "SouthLabs":{turn:2,height:30,build(k){
+    const lot=k.box(-44,18,0,44,44,.3,"#2a2c30"),lotTop=k.side(lot,"top");
+    k.deco(lotTop,"#8d9095",[4,14].flatMap(v=>Array.from({length:11},(_,i)=>k.rect(lotTop,4+i*8,v,4.6+i*8,v+9,.02))));
+    const lab=k.box(-44,-44,0,44,6,30,"#d9ddd6");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(lab,d),lit=[];
+      k.deco(f,"#2c4a5c",[0,1].map(r=>k.rect(f,2,4+r*12,f.w-2,11+r*12,.05)));
+      for(let r=0;r<2;r++)for(let u=3;u<f.w-8;u+=8)if(k.rand()<.35)lit.push(k.rect(f,u,4.5+r*12,u+7,10.5+r*12,.08));
+      k.deco(f,OFFICE_LIT,lit,{lit:true});
+      k.deco(f,"#f4f5f0",Array.from({length:Math.floor(f.w/5)},(_,i)=>k.rect(f,2.5+i*5,2.5,3.4+i*5,26,.4)),{fine:true});
+    }
+    const atrium=k.box(-14,6,0,14,16,22,"#8fb9cc"),af=k.side(atrium,"s");
+    k.deco(af,"#e6f4f7",[k.rect(af,2,.5,26,15,.05)],{lit:true});
+    k.deco(af,"#35505c",Array.from({length:5},(_,i)=>k.rect(af,1.5+i*6,0,2.1+i*6,16,.1)));
+    k.sign(af,2,26,16.8,20.8,"SouthLabs","#99f6e4","#12343a");
+    k.box(-34,-32,30,-12,-14,37,"#9aa0a6");k.box(4,-34,30,24,-18,35,"#8b9299");
+    k.oct(31,-30,2.2,30,56,"#b9bec3");k.oct(38,-30,2.2,30,52,"#b9bec3");
+    k.car(-36,31,"#b91c1c");k.car(-20,31,"#e5e7eb");k.car(12,31,"#1d4ed8");
+  }},
+  // Converted brick factory: tall loft windows, sawtooth roof and a chimney.
+  "WestWorks":{turn:2,height:32,build(k){
+    const trim="#d8c8a8";
+    const hall=k.box(-44,-34,0,44,40,32,"#7a3b2a");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(hall,d);
+      k.windows(f,{v0:4,rows:2,step:13,w:7,h:10,bay:11,lit:.4,glass:"#2f3c44",frameColor:trim,skip:d==="e"?(r,c)=>r===0&&c>=1&&c<=4:null});
+      k.band(f,30,32,trim);
+    }
+    const east=k.side(hall,"e");
+    k.deco(east,"#6b7280",[k.rect(east,14,0,26,12,.1),k.rect(east,32,0,44,12,.1)]);
+    k.deco(east,"#4b5563",[14,32].flatMap(u=>[2.5,5,7.5,10].map(v=>k.rect(east,u,v,u+12,v+.5,.15))),{fine:true});
+    k.centeredSign(k.side(hall,"s"),52,26.3,29.6,"WESTWORKS",trim,null);
+    for(let i=0;i<5;i++) {
+      const y=-34+i*14.8,t=k.extrude("x",-44,44,[[y,32],[y+14.8,32],[y,42]],"#3b3f45"),glassFace=k.side(t,"n");
+      k.deco(glassFace,"#9cc3d5",[k.rect(glassFace,1,1,glassFace.w-1,glassFace.h-1,.05)],{lit:true});
+    }
+    const chimney=k.box(30,-44,0,38,-36,80,"#6b3122");
+    for(const d of ["s","n","e","w"])k.band(k.side(chimney,d),72,75,trim);
+  }},
+  // Two-storey brick school: pedimented entrance with clock, wings around a
+  // playground, a front lawn and a flagpole.
+  "Hillside":{turn:0,height:26,build(k){
+    const brick="#9b5a3c",trim="#eadfca";
+    k.box(-44,20,0,44,44,.25,"#2f4b2d");k.box(-3,20,0,3,44,.3,"#8b857a");k.box(-24,-44,0,24,-8,.25,"#7b4a36");
+    const main=k.box(-44,-8,0,44,14,26,brick);
+    for(const d of ["s","n","e","w"]) {
+      k.windows(k.side(main,d),{v0:4,rows:2,step:11,w:5.5,h:7,bay:8,lit:.25,frameColor:trim,skip:d==="s"?(r,c)=>c>=4&&c<=6:null});
+      k.band(k.side(main,d),24,26,trim);
+    }
+    for(const x of [-44,26]) {
+      const wing=k.box(x,-44,0,x+18,-8,22,brick);
+      for(const d of ["n","e","w"]){k.windows(k.side(wing,d),{v0:4,rows:2,step:10,w:5,h:6.5,bay:8,lit:.25,frameColor:trim});k.band(k.side(wing,d),20,22,trim);}
+    }
+    const pavilion=k.extrude("y",14,22,[[-12,0],[12,0],[12,28],[0,36],[-12,28]],brick),pf=k.side(pavilion,"s");
+    k.roofColor(pavilion,"#4b4f58");
+    k.deco(pf,trim,[k.rect(pf,6.5,0,17.5,10.5,.1)]);
+    k.deco(pf,"#4a3526",[k.rect(pf,7.5,0,11.8,9.5,.15),k.rect(pf,12.2,0,16.5,9.5,.15)]);
+    k.windows(pf,{v0:12,rows:1,w:4,h:5,bay:6,lit:.5,frameColor:trim,skip:(r,c)=>c===1||c===2});
+    k.sign(pf,1,23,18.5,23,"HILLSIDE SCHOOL","#7a2e1c",trim);
+    k.clock(pf,12,30.8,2.8);
+    k.box(-6,-32,0,6,-22,8,"#e0b000");
+    k.box(30,30,0,31,31,46,"#cfd4da",{plan:false});
+    const flag=k.box(31,30.3,38,40,30.7,44,"#b91c1c",{plan:false}),ff=k.side(flag,"s");
+    k.deco(ff,"#f8fafc",[k.rect(ff,0,1.5,9,2.4,.05),k.rect(ff,0,3.4,9,4.3,.05)]);k.deco(ff,"#1e3a8a",[k.rect(ff,0,3,4,6,.06)]);
+  }},
+  // Supermarket with a lit glass front, striped awning, raised sign and parking.
+  "GreenMart":{turn:0,height:20,build(k){
+    const green="#2f7d3a",lot=k.box(-44,8,0,44,44,.3,"#26282c"),lotTop=k.side(lot,"top");
+    k.deco(lotTop,"#8d9095",[2,24].flatMap(v=>Array.from({length:11},(_,i)=>k.rect(lotTop,4+i*8,v,4.6+i*8,v+10,.02))));
+    const store=k.box(-44,-44,0,44,6,20,"#cdbf98");
+    for(const d of ["n","e","w"]){const f=k.side(store,d);k.band(f,17,20,green);k.windows(f,{v0:12,rows:1,w:6,h:3,bay:14,lit:.6});}
+    const f=k.side(store,"s");
+    k.deco(f,"#f4f0d8",[k.rect(f,6,.5,82,11,.05)],{lit:true});
+    k.deco(f,"#39413a",Array.from({length:10},(_,i)=>k.rect(f,6+i*8.4-.3,.5,6+i*8.4+.3,11,.1)),{fine:true});
+    k.deco(f,"#1f2a24",[k.rect(f,38,0,43.8,9.5,.12),k.rect(f,44.2,0,50,9.5,.12)]);
+    k.awning(f,6,82,13,4,2.5,[green,"#f4f4ec"],4);
+    k.band(f,17.5,20,green);
+    const parapet=k.box(-24,2,20,24,6,29,green);
+    k.sign(k.side(parapet,"s"),2,46,1.6,7.4,"GreenMart","#ffffff",null);
+    k.car(-34,15,"#b91c1c");k.car(-10,15,"#e5e7eb");k.car(22,37,"#1d4ed8");k.car(30,15,"#57534e");
+    k.box(34,24,0,42,26,3,"#9aa0a6",{plan:false});
+  }},
+  // Corner market: lit shop windows under red-white awnings, produce stands,
+  // flats above and a rooftop water tank.
+  "CityFoods":{turn:0,height:30,build(k){
+    const cream="#e2d4b7",green="#1f3b2b",shop=k.box(-44,-44,0,40,32,30,"#a0522d");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(shop,d),storefront=d==="s"||d==="e";
+      if(storefront) {
+        k.deco(f,"#f6dfa0",[k.rect(f,3,1,f.w-3,10,.05)],{lit:true});
+        k.deco(f,green,Array.from({length:Math.floor((f.w-6)/7)+1},(_,i)=>k.rect(f,3+i*7-.35,1,3+i*7+.35,10,.1)),{fine:true});
+        k.deco(f,green,[k.rect(f,f.w/2-3,0,f.w/2+3,9,.12),k.rect(f,0,11,f.w,15.5,.05)]);
+        k.centeredSign(f,40,11.3,15.2,"CityFoods","#f2c14e",null);
+        k.awning(f,3,f.w-3,11,5,3,["#c0392b","#f5f1e6"],3.5);
+      } else k.windows(f,{v0:3,rows:1,w:5,h:6,bay:12,lit:.3,frameColor:cream});
+      k.windows(f,{v0:17.5,rows:1,w:5,h:7,bay:9,lit:.5,frameColor:cream});
+      k.cornice(f,30,1.8,cream);
+    }
+    for(const [x,colors] of [[-30,["#f59e0b","#65a30d","#dc2626"]],[-8,["#84cc16","#f97316","#facc15"]],[14,["#dc2626","#16a34a","#f59e0b"]]]) {
+      const top=k.side(k.box(x,38,0,x+12,43,4.5,"#6b4a2b"),"top");
+      colors.forEach((c,i)=>k.deco(top,c,[k.rect(top,.5+i*3.8,.6,3.9+i*3.8,4.4,.05)]));
+    }
+    k.box(14,-30,30,30,-14,33,"#3a3a3a");k.oct(22,-22,6.5,33,44,"#6f5a44");k.cone(22,-22,7,44,50,"#4a3f35");
+  }},
+  // Fire hall with three bays and a hose tower beside a blue-banded police station.
+  "Police / Fire":{turn:0,height:28,build(k){
+    k.box(-44,-44,0,-2,-28,.3,"#2a2c30");k.box(0,-44,0,26,-26,.3,"#4a4c50");
+    const fire=k.box(0,-26,0,44,44,28,"#8e3a2e"),ff=k.side(fire,"s");
+    for(let i=0;i<3;i++) {
+      const u=3+i*13.5;
+      k.deco(ff,"#f0ece4",[k.rect(ff,u-.8,0,u+11.8,20.8,.05)]);k.deco(ff,"#7f1d1d",[k.rect(ff,u,0,u+11,20,.1)]);
+      k.deco(ff,"#f3d9a4",[k.rect(ff,u+1,15,u+10,18,.15)],{lit:true});
+      k.deco(ff,"#5b1414",[4,8,12].map(v=>k.rect(ff,u,v,u+11,v+.5,.15)),{fine:true});
+    }
+    k.sign(ff,4,40,21.8,26.2,"FIRE","#b91c1c","#f4efe6");
+    for(const d of ["n","e","w"])k.windows(k.side(fire,d),{v0:5,rows:2,step:10,w:5,h:6,bay:9,lit:.35});
+    for(const d of ["s","n","e","w"])k.band(k.side(fire,d),26,27.5,"#f43f5e");
+    const tower=k.box(28,-44,0,44,-27,56,"#7f3328");
+    for(const d of ["s","n","e","w"]){k.windows(k.side(tower,d),{v0:6,rows:5,step:10,w:2.5,h:5,bay:8,lit:.3});k.band(k.side(tower,d),52,56,"#e8dfcf");}
+    const police=k.box(-44,-26,0,-2,44,24,"#4a5b70"),pf=k.side(police,"s");
+    for(const d of ["s","n","e","w"]) {
+      k.band(k.side(police,d),17,19.5,"#38bdf8");
+      k.windows(k.side(police,d),{v0:4,rows:1,w:5,h:7,bay:9,lit:.4,skip:d==="s"?(r,c)=>c===2:null});
+      k.windows(k.side(police,d),{v0:20.5,rows:1,w:5,h:2.5,bay:9,lit:.2});
+    }
+    k.deco(pf,"#dbeafe",[k.rect(pf,17,0,25,9,.1)],{lit:true});
+    k.deco(pf,"#60a5fa",[k.rect(pf,14.5,6,16,8,1),k.rect(pf,26,6,27.5,8,1)],{lit:true});
+    k.sign(pf,11,31,10.5,14.5,"POLICE","#ffffff","#1e3a5f");
+    k.box(-1.5,40,0,-.5,41,40,"#cfd4da",{plan:false});
+    k.box(-.5,40.3,33,7.5,40.7,39,"#1d4ed8",{plan:false});
+  }},
+  // U-shaped cream apartment block over a brick base, with balconies, a
+  // courtyard garden behind a lettered gate, and a rooftop water tank.
+  "Riverbend Apts":{turn:0,height:78,build(k){
+    const cream="#d8cdb9",brick="#7b4a3a";
+    k.box(-14,-24,0,14,44,.25,"#2e4a2d");k.box(-2,-24,0,2,44,.3,"#8b857a");
+    const west=k.box(-44,-44,0,-14,44,78,cream),east=k.box(14,-44,0,44,44,78,cream),link=k.box(-14,-44,0,14,-24,70,cream);
+    for(const p of [west,east,link])for(const d of ["s","n","e","w"]) {
+      const f=k.frame(k.side(p,d));
+      k.band(f,0,21,brick);
+      k.windows(f,{v0:3,rows:Math.floor((f.h-3)/9.5),step:9.5,w:4.5,h:6,bay:8,lit:.3});
+      if(d==="s"||(p===west&&d==="e")||(p===east&&d==="w"))
+        k.balconies(f,{v0:21,rows:Math.floor((f.h-24)/9.5)+1,step:9.5,w:12,bay:16});
+      k.cornice(f,f.h,1.6,"#efe7d6");
+    }
+    const gate=k.box(-14,41,0,14,43,8,brick),gf=k.side(gate,"s");
+    k.deco(gf,"#2b2622",[k.rect(gf,11,0,17,6.5,.1)]);
+    k.sign(gf,1.5,10.5,2.5,6,"RIVER","#f1e6d0",null);k.sign(gf,17.5,26.5,2.5,6,"BEND","#f1e6d0",null);
+    k.box(-38,-6,78,-22,8,86,"#bdb3a1");k.oct(30,-24,5,78,88,"#6f5a44");k.cone(30,-24,5.5,88,93,"#4a3f35");
+    k.tree(-7,6,1);k.tree(7,20,.9);k.tree(-7,32,.85);
+  }},
+  // A row of eight three-storey townhouses in varied brick and paint, with
+  // stoops, cornices or gables, and back gardens.
+  "Maple Row":{turn:0,height:33,build(k){
+    const colors=["#8c4a3c","#6e4f3f","#b8866b","#7d8b7a","#5f6f86","#c9a24d","#9c5b4f","#d2c3a3"],heights=[33,36,33,30,36,33,30,34];
+    const yard=k.box(-44,-44,0,44,6,.25,"#2c4429"),yardTop=k.side(yard,"top");
+    k.deco(yardTop,"#5a4a38",Array.from({length:7},(_,i)=>k.rect(yardTop,(i+1)*11-.3,0,(i+1)*11+.3,50,.02)),{fine:true});
+    for(let i=0;i<8;i++) {
+      const x0=-44+i*11,h=heights[i],gabled=i%3===1;
+      const house=gabled?k.extrude("x",x0,x0+11,[[8,0],[40,0],[40,h],[24,h+8],[8,h]],colors[i]):k.box(x0,8,0,x0+11,40,h,colors[i]);
+      if(gabled)k.roofColor(house,"#474d57");
+      const f=k.side(house,"s"),door=i%2?6.5:1.5,other=i%2?1.5:6;
+      k.deco(f,"#b5aa99",[[k.at(f,door-.5,2.5),k.at(f,door+3.5,2.5),k.at(f,door+3.5,2.5,4),k.at(f,door-.5,2.5,4)],k.rect(f,door-.5,0,door+3.5,2.5,4)]);
+      k.deco(f,"#3b2a20",[k.rect(f,door,2.5,door+3,10,.1)]);
+      k.deco(f,"#e8e0cf",[k.rect(f,door-.4,10,door+3.4,11,.12)],{fine:true});
+      const panes=[],lit=[],pane=([u,v],grow=0,out=.08)=>k.rect(f,u-grow,v-grow,u+3.3+grow,v+6.5+grow,out);
+      for(const v of [4,14,24])for(const u of v===4?[other]:[1.5,6.2])(k.rand()<.4?lit:panes).push([u,v]);
+      k.deco(f,"#e8e0cf",[...panes,...lit].map(q=>pane(q,.6,.04)),{fine:true});
+      k.deco(f,WINDOW_DARK,panes.map(q=>pane(q)));k.deco(f,WINDOW_LIT,lit.map(q=>pane(q)),{lit:true});
+      if(!gabled)k.cornice(f,h,1.4,"#e8e0cf");
+      k.windows(k.side(house,"n"),{v0:4,rows:3,step:10,w:3.2,h:6,bay:5.5,lit:.3});
+    }
+    k.tree(-26,-22,1);k.tree(10,-30,1.1);k.tree(30,-14,.9);
+  }},
+  // Cedar-clad L-shaped apartment block with slatted walls and courtyard balconies.
+  "Cedar Block":{turn:2,height:46,build(k){
+    const cedar="#a8744a",frameColor="#2a2623";
+    k.box(-16,-44,0,44,16,.25,"#2f4a2d");
+    const south=k.box(-44,16,0,44,44,46,cedar),west=k.box(-44,-44,0,-16,16,46,cedar);
+    for(const p of [south,west])for(const d of ["s","n","e","w"]) {
+      const f=k.frame(k.side(p,d));
+      k.deco(f,"#7d5232",Array.from({length:Math.floor(f.w/3.2)},(_,i)=>k.rect(f,1+i*3.2,0,1.8+i*3.2,f.h,.05)),{fine:true});
+      k.windows(f,{v0:3,rows:4,step:11,w:3.8,h:7.5,bay:7,lit:.35,frameColor,skip:p===south&&d==="s"?(r,c)=>r===0&&(c===5||c===6):null});
+      k.band(f,44.5,46,"#3a2f28");
+    }
+    for(const f of [k.side(south,"n"),k.side(west,"e")])
+      k.balconies(f,{v0:13,rows:3,step:11,w:10,bay:14,depth:3.5,slab:"#6b5a4a",railColor:"#9cc0cc"});
+    const front=k.side(south,"s");
+    k.deco(front,"#e8d9b0",[k.rect(front,40,0,48,9,.1)],{lit:true});
+    k.sign(front,32,56,9.8,12.8,"CEDAR BLOCK","#f5e6c8","#3a2f28");
+    k.tree(4,-20,1);k.tree(26,-2,1.1);
+  }},
+  // White mid-rise with dark ribbon windows, birch-bark accents, glass
+  // balconies and a penthouse over a lit shop podium with a roof garden.
+  "Birch Hgts":{turn:3,height:92,build(k){
+    const white="#e8e5dd",dark="#243240",podium=k.box(-44,-44,0,44,44,12,"#2b3a46");
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(podium,d);
+      k.deco(f,"#f3e1b5",[k.rect(f,2,1,f.w-2,9,.05)],{lit:true});
+      k.deco(f,dark,Array.from({length:11},(_,i)=>k.rect(f,2+i*8.4-.3,1,2+i*8.4+.3,9,.1)),{fine:true});
+      k.band(f,9.5,12,"#d9d4c8");
+    }
+    k.sign(k.side(podium,"s"),24,64,9.6,11.9,"BIRCH HEIGHTS","#1f2933",null);
+    const roof=k.side(podium,"top");
+    k.deco(roof,"#3f6b3a",[k.rect(roof,3,3,85,85,.05)]);k.deco(roof,"#b7b09f",[k.rect(roof,3,40,85,48,.08)]);
+    const tower=k.box(-28,-32,12,28,32,92,white);
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(tower,d),lit=[],bark=[];
+      k.deco(f,dark,Array.from({length:9},(_,r)=>k.rect(f,1.5,1.5+r*8.9,f.w-1.5,6.5+r*8.9,.05)));
+      for(let r=0;r<9;r++)for(let u=2;u<f.w-7;u+=7)if(k.rand()<.28)lit.push(k.rect(f,u,2+r*8.9,u+6,6+r*8.9,.08));
+      for(let i=0;i<22;i++){const u=k.rand()*(f.w-6),v=7+Math.floor(k.rand()*9)*8.9+k.rand()*1.5;bark.push(k.rect(f,u,v,u+1.5+k.rand()*3.5,v+.6,.06));}
+      k.deco(f,WINDOW_LIT,lit,{lit:true});k.deco(f,"#3a3a3a",bark,{fine:true});
+      if(d==="s")k.balconies(f,{v0:1,rows:9,step:8.9,w:f.w-6,bay:f.w,depth:3,slab:"#f1efe9",railColor:"#a9c7d6"});
+    }
+    const penthouse=k.box(-18,-20,92,18,20,101,dark);
+    for(const d of ["s","n","e","w"]){const f=k.frame(k.side(penthouse,d));k.deco(f,WINDOW_LIT,[k.rect(f,3,1.5,f.w-3,7,.05)],{lit:true});}
+    k.box(-21,-23,101,21,23,103,white);
+  }},
+  // Pre-war brick apartments: stone base, bay windows, cornice and a slate
+  // mansard roof with dormers and chimneys.
+  "Oak Hgts":{turn:1,height:58,build(k){
+    const stone="#c2b8a3",brick="#7a3e2e",main=k.box(-40,-40,0,40,40,58,brick);
+    for(const d of ["s","n","e","w"]) {
+      const f=k.side(main,d);
+      k.band(f,0,10,stone);
+      k.windows(f,{v0:13,rows:5,step:9,w:4,h:6,bay:8,lit:.3,frameColor:stone});
+      k.windows(f,{v0:3,rows:1,w:4.5,h:5,bay:8,lit:.5,skip:d==="s"?(r,c,n)=>Math.abs(c-(n-1)/2)<1:null});
+      for(const uc of [18,62])k.bayWindow(f,uc,9,12,53,2.5,brick,[13,22,31,40,49].map(v=>[v,v+6]));
+      k.cornice(f,58,1.8,stone);
+    }
+    const front=k.side(main,"s");
+    k.arch(front,40,6,0,5.5,"#3b2a20");
+    k.sign(front,29,51,9.2,12.2,"OAK HEIGHTS","#f1e6d0","#2f2a26");
+    const roof=k.frustum(-41,-41,58,41,41,70,7,"#3f4650");
+    for(const d of ["s","n","e","w"])k.windows(k.side(roof,d),{v0:3,rows:1,w:4,h:5,bay:12,lit:.4,frameColor:"#d8d0c0"});
+    k.box(-30,-12,70,-25,-6,78,brick);k.box(25,6,70,30,12,78,brick);
+  }},
+};
+
+function makeBuildingDesign(b) {
+  const spec=DOWNTOWN_DESIGNS[b.name];
+  if(!spec)return null;
+  const kit=designKit(b.name);spec.build(kit);
+  const t=spec.turn,turn=p=>t===1?[-p[1],p[0],p[2]]:t===2?[-p[0],-p[1],p[2]]:t===3?[p[1],-p[0],p[2]]:p;
+  for(const part of kit.parts) {
+    for(const f of part.faces) {
+      f.pts=f.pts.map(turn);f.n=turn(f.n);
+      for(const d of f.deco)d.polys=d.polys.map(q=>q.map(turn));
+      for(const s of f.signs){s.a=turn(s.a);s.b=turn(s.b);s.c=turn(s.c);}
+      f.light=f.n[2]<-.5?.55:.68+.32*Math.max(0,dot3(f.n,DESIGN_LIGHT));
+    }
+    const all=part.faces.flatMap(f=>f.pts);
+    part.lo=[0,1,2].map(k=>Math.min(...all.map(p=>p[k])));part.hi=[0,1,2].map(k=>Math.max(...all.map(p=>p[k])));
+  }
+  const parts=kit.parts;
+  return {parts,height:spec.height,planOrder:parts.slice().sort((a,b)=>a.hi[2]-b.hi[2]),
+    lo:[0,1].map(k=>Math.min(...parts.map(p=>p.lo[k]))),hi:[0,1].map(k=>Math.max(...parts.map(p=>p.hi[k])))};
+}
+for(const b of BUILDINGS){const design=makeBuildingDesign(b);if(design)buildingDesigns.set(b,design);}
+document.getElementById("legend-city-homes").textContent="Downtown apartments & townhouses ("+
+  buildingsByType.residential.reduce((sum,b)=>sum+(b.units || 0),0)+" units)";
+
+// True when part a must be painted before part b: a plane between them has
+// the camera on b's side. Checked per axis, so touching parts qualify.
+function partBehind(a,b,c) {
+  for(let k=0;k<3;k++) {
+    if(a.hi[k]<=b.lo[k]+1e-6){if(c[k]>=b.lo[k])return true;if(c[k]<=a.hi[k])return false;}
+    else if(b.hi[k]<=a.lo[k]+1e-6){if(c[k]<=b.hi[k])return true;if(c[k]>=a.lo[k])return false;}
+  }
+  return false;
+}
+// Ground-level parts first, then a painter's order: repeatedly take a part
+// with nothing left behind it, starting from the farthest.
+function orderDesignParts(parts,c) {
+  const d=p=>(p.lo[0]+p.hi[0])/2-c[0],e=p=>(p.lo[1]+p.hi[1])/2-c[1],f=p=>(p.lo[2]+p.hi[2])/2-c[2];
+  const dist=p=>d(p)*d(p)+e(p)*e(p)+f(p)*f(p);
+  const rest=parts.filter(p=>!p.ground).sort((a,b)=>dist(b)-dist(a)),out=parts.filter(p=>p.ground);
+  while(rest.length) {
+    const i=rest.findIndex(p=>!rest.some(q=>q!==p&&partBehind(q,p,c)));
+    out.push(rest.splice(Math.max(i,0),1)[0]);
+  }
+  return out;
+}
+function traceDesignPoly(pts,ox,oy,cam) {
+  const verts=pts.map(p=>{const dx=p[0]+ox-cam.x,dy=p[1]+oy-cam.y;return {fwd:dx*cam.cos+dy*cam.sin,right:-dx*cam.sin+dy*cam.cos,z:p[2]-cam.z};});
+  const clipped=clipPolyNear(verts,FPV_NEAR);
+  if(clipped.length<3)return false;
+  let q=projectCam(clipped[0]);fpvCtx.moveTo(q.x,q.y);
+  for(let i=1;i<clipped.length;i++){q=projectCam(clipped[i]);fpvCtx.lineTo(q.x,q.y);}
+  fpvCtx.closePath();
+  return true;
+}
+// Sign text uses an affine map of the sign's projected corners, drawn at 10×
+// font size so small signs still rasterize cleanly.
+function drawSignFPV(s,ox,oy,cam,fade) {
+  const project=p=>{const v=toCamSpace(p[0]+ox,p[1]+oy,p[2],cam);return v.fwd<FPV_NEAR*2?null:projectCam(v);};
+  const a=project(s.a),b=project(s.b),c=project(s.c);
+  if(!a||!b||!c||Math.hypot(c.x-a.x,c.y-a.y)<4)return;
+  fpvCtx.save();
+  fpvCtx.transform((b.x-a.x)/s.w/10,(b.y-a.y)/s.w/10,(c.x-a.x)/s.h/10,(c.y-a.y)/s.h/10,a.x,a.y);
+  let size=s.h*7.2;
+  fpvCtx.font="bold "+size+"px -apple-system, sans-serif";
+  const width=fpvCtx.measureText(s.text).width;
+  if(width>s.w*9.2){size*=s.w*9.2/width;fpvCtx.font="bold "+size+"px -apple-system, sans-serif";}
+  fpvCtx.textAlign="center";fpvCtx.textBaseline="middle";fpvCtx.fillStyle=applyShade(s.fg,Math.max(fade,.75));
+  fpvCtx.fillText(s.text,s.w*5,s.h*5.3);
+  fpvCtx.restore();
+}
+function drawDesignFPV(b,design,cam,dist) {
+  const [ox,oy]=buildingCenter(b);
+  // Skip buildings entirely behind the camera or beside the view. A column's
+  // screen x does not depend on height, so footprint corners decide this.
+  let behind=0,left=0,right=0;
+  for(const [x,y] of [[design.lo[0],design.lo[1]],[design.hi[0],design.lo[1]],[design.hi[0],design.hi[1]],[design.lo[0],design.hi[1]]]) {
+    const v=toCamSpace(x+ox,y+oy,0,cam);
+    if(v.fwd<FPV_NEAR){behind++;continue;}
+    const px=projectCam(v).x;if(px<0)left++;else if(px>FPV_W)right++;
+  }
+  if(behind===4||(behind===0&&(left===4||right===4)))return;
+  const c=[cam.x-ox,cam.y-oy,cam.z],fade=Math.max(.45,1-dist/(FPV_FAR+CELL*2)),detail=dist<FPV_DETAIL_DIST;
+  for(const part of orderDesignParts(design.parts,c))for(const f of part.faces) {
+    const p=f.pts[0];
+    if(f.n[0]*(c[0]-p[0])+f.n[1]*(c[1]-p[1])+f.n[2]*(c[2]-p[2])<=1e-6)continue;
+    fpvCtx.beginPath();
+    if(!traceDesignPoly(f.pts,ox,oy,cam))continue;
+    fpvCtx.fillStyle=applyShade(f.color,fade*f.light);fpvCtx.fill();
+    for(const d of f.deco) {
+      if(d.fine&&!detail)continue;
+      fpvCtx.beginPath();
+      let any=false;
+      for(const poly of d.polys)any=traceDesignPoly(poly,ox,oy,cam)||any;
+      if(!any)continue;
+      fpvCtx.fillStyle=applyShade(d.color,d.lit?Math.max(fade,.85):fade*f.light);fpvCtx.fill();
+    }
+    if(detail)for(const s of f.signs)drawSignFPV(s,ox,oy,cam,fade);
+  }
+}
+// Map roof plan: ground surfaces in their own colors, then roofs lightened by
+// height so podiums, towers and rooftop plant read as distinct outlines.
+function drawDesignPlan(b,design,bx,by,size) {
+  const [cx,cy]=buildingCenter(b);
+  ctx.save();ctx.beginPath();ctx.rect(bx,by,size,size);ctx.clip();
+  for(const p of design.planOrder) {
+    if(p.plan===false)continue;
+    const x=cx+p.lo[0],y=cy+p.lo[1],w=p.hi[0]-p.lo[0],h=p.hi[1]-p.lo[1];
+    if(p.ground){ctx.fillStyle=p.color;ctx.fillRect(x,y,w,h);continue;}
+    if(p.plan==="tree"){ctx.fillStyle="#2f5b38";ctx.beginPath();ctx.arc(x+w/2,y+h/2,w/2,0,Math.PI*2);ctx.fill();continue;}
+    ctx.fillStyle="rgba(255,255,255,"+(.05+.2*Math.min(1,p.hi[2]/120)).toFixed(3)+")";ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle="rgba(0,0,0,0.3)";ctx.lineWidth=.75;ctx.strokeRect(x+.4,y+.4,w-.8,h-.8);
+  }
+  ctx.restore();
+}
+
 function drawBuildingsFPV(cam) {
   const items = [];
   // Inset the building face inside the block so it does not overlap the
@@ -3758,7 +4332,9 @@ function drawBuildingsFPV(cam) {
   items.sort((a, b) => b.dist - a.dist);
   for (const item of items) {
     const { b, bx, by, bSize, cx, cy } = item;
-    if(b.type==="residential" && !b.apartments) {drawRanchFPV(b,cam);continue;}
+    const design=buildingDesigns.get(b);
+    if(design) {drawDesignFPV(b,design,cam,item.dist);continue;}
+    if(b.type==="residential") {drawRanchFPV(b,cam);continue;}
     const groundCorners = [
       [bx, by], [bx + bSize, by], [bx + bSize, by + bSize], [bx, by + bSize],
     ];
@@ -3782,21 +4358,6 @@ function drawBuildingsFPV(cam) {
       strokePolyWorld(
         [[g1[0], g1[1], 0], [g2[0], g2[1], 0], [g2[0], g2[1], FPV_BLDG_HEIGHT], [g1[0], g1[1], FPV_BLDG_HEIGHT]],
         cam);
-      if(b.type==="emergency") {
-        const P=(t,h)=>[g1[0]+(g2[0]-g1[0])*t,g1[1]+(g2[1]-g1[1])*t,h];
-        fpvCtx.fillStyle="#34404e";
-        for(const left of [.1,.55])fillPolyWorld([P(left,0),P(left+.3,0),P(left+.3,26),P(left,26)],cam);
-        fpvCtx.fillStyle="#38bdf8";fillPolyWorld([P(.08,32),P(.44,32),P(.44,38),P(.08,38)],cam);
-        fpvCtx.fillStyle="#f43f5e";fillPolyWorld([P(.55,32),P(.92,32),P(.92,38),P(.55,38)],cam);
-      }
-      if(b.apartments) {
-        fpvCtx.fillStyle="#9ec7db";
-        for(let floor=0;floor<5;floor++)for(let window=0;window<5;window++) {
-          const left=.06+window*.18,right=left+.11,z=6+floor*11;
-          const P=(t,h)=>[g1[0]+(g2[0]-g1[0])*t,g1[1]+(g2[1]-g1[1])*t,h];
-          fillPolyWorld([P(left,z),P(right,z),P(right,z+6),P(left,z+6)],cam);
-        }
-      }
     }
   }
 }
@@ -4295,7 +4856,7 @@ registerSimulationPauseButton(document.getElementById("pause"));
 document.getElementById("reset").addEventListener("click", () => {
   if (spectateCar) stopSpectate();
   for(let i=cars.length-1;i>=0;i--)if(cars[i].incident || ["recovery","human"].includes(cars[i].kind))cars.splice(i,1);
-  featuredCar=null;cockpitCar=null;
+  cockpitCar=null;
   incidents.length=0;directionalBlocks.clear();
   trains.length=0;trainJobs.length=0;railBlockedEdges.clear();for(const waiting of railWaiting.values())waiting.length=0;
   nextPoliceAt=180*(.5+Math.random());nextFireAt=600*(.5+Math.random());nextTroubleAt=480*(.5+Math.random());
@@ -4366,7 +4927,7 @@ document.getElementById("api-key").addEventListener("input", updateApiKeyStatus)
 // ============================================================
 // Live fleet & demand controls
 // ============================================================
-const POP_MAX = 500, POP_STEP = 10, CAR_MAX = 60;
+const POP_MAX = 800, POP_STEP = 10, CAR_MAX = 60;
 function countCars(kind) { let n = 0; for (const c of cars) if (c.kind === kind && !c.retiring) n++; return n; }
 
 function addHumans(n) {
@@ -4424,7 +4985,6 @@ function removeCars(kind, n) {
       }
     }
     if (car === spectateCar) stopSpectate();
-    if (car === featuredCar) featuredCar = null;
     if (car === cockpitCar) cockpitCar = null;
     if (ix.drivingCar === car) ix.drivingCar = null;
     cars.splice(idx, 1);
@@ -4438,7 +4998,6 @@ function retireFinishedBuses() {
     if(!bus.retiring || (bus.state!=="idle" && bus.state!=="returning") || bus.riders.length || bus.pickupQueue.length) continue;
     for(const edge of Object.values(edges)) edge.claims.delete(bus.id);
     if(bus===spectateCar) stopSpectate();
-    if(bus===featuredCar) featuredCar=null;
     if(bus===cockpitCar) cockpitCar=null;
     cars.splice(i,1);
   }
