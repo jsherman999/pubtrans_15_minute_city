@@ -284,10 +284,10 @@ console.log('PASS: 212 downtown units in five buildings, unit-weighted home assi
 {
  const {run}=boot(3);
  assert.equal(run('BUILDINGS.filter(b=>b.development==null && b!==parkRide).every(b=>buildingDesigns.has(b))'),true);
- assert.equal(run('buildingDesigns.size'),14);
+ assert.equal(run('buildingDesigns.size'),15);
  run(`for(const [b,d] of buildingDesigns){
    const standing=d.parts.filter(p=>!p.ground);
-   for(const p of d.parts)if(p.lo[0]<-44||p.lo[1]<-44||p.hi[0]>44||p.hi[1]>44)throw Error(b.name+' leaves its block');
+   if(b!==parkRide)for(const p of d.parts)if(p.lo[0]<-44||p.lo[1]<-44||p.hi[0]>44||p.hi[1]>44)throw Error(b.name+' leaves its block');
    for(let i=0;i<standing.length;i++)for(let j=i+1;j<standing.length;j++){
      const a=standing[i],c=standing[j];
      if(![0,1,2].some(k=>a.hi[k]<=c.lo[k]+1e-6||c.hi[k]<=a.lo[k]+1e-6))throw Error(b.name+' has interpenetrating parts');
@@ -295,7 +295,7 @@ console.log('PASS: 212 downtown units in five buildings, unit-weighted home assi
    for(const p of d.parts)for(const f of p.faces)
      for(const q of [...f.pts,...f.deco.flatMap(x=>x.polys.flat()),...f.signs.flatMap(s=>[s.a,s.b,s.c])])
        if(!q.every(Number.isFinite))throw Error(b.name+' has non-finite geometry');
-   if(b.name==="Central Stn")continue;
+   if(b.name==="Central Stn"||b===parkRide)continue;
    const [cx,cy]=buildingCenter(b);
    for(let s=0;s<railLength;s+=2){const r=railPoint(s);
      for(const p of standing){const dx=Math.max(cx+p.lo[0]-r.x,0,r.x-cx-p.hi[0]),dy=Math.max(cy+p.lo[1]-r.y,0,r.y-cy-p.hi[1]);
@@ -320,6 +320,60 @@ console.log('PASS: 212 downtown units in five buildings, unit-weighted home assi
 }
 console.log('PASS: fourteen downtown designs inside their blocks, separable parts, rail clearance, finite geometry, painter ordering and rendering.');
 
+// Juniper Park & Ride follows its straight track. Standing parts stay clear of
+// both tracks and the access road, coaches at the platforms can be ordered
+// against every station part, and Driver POV draws those coaches with it.
+{
+ const {run}=boot(5);
+ run(`const d=buildingDesigns.get(parkRide),[ox,oy]=buildingCenter(parkRide);
+   const seg=railSegments.find(s=>Math.hypot(s.b[0]-ox,s.b[1]-oy)<1e-6);
+   if(Math.abs(d.angle-Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]))>1e-9)throw Error('Park & Ride not aligned with its track');
+   const standing=d.parts.filter(p=>!p.ground),local=([x,y])=>[(x-ox)*d.rc+(y-oy)*d.rs,-(x-ox)*d.rs+(y-oy)*d.rc];
+   for(const p of standing)if(p.lo[1]<21&&p.hi[1]>-21)throw Error('Park & Ride part on the tracks');
+   for(const {to} of adj[parkRide.accessId]) {
+     const a=local(nodeXY(parkRide.accessId)),b=local(nodeXY(to));
+     for(let t=0;t<=1;t+=.05){const q=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
+       for(const p of standing){const dx=Math.max(p.lo[0]-q[0],0,q[0]-p.hi[0]),dy=Math.max(p.lo[1]-q[1],0,q[1]-p.hi[1]);
+         if(Math.hypot(dx,dy)<FPV_ROAD_HALF)throw Error('Park & Ride part on the access road');}}
+   }
+   for(const u of [-100,-50,0,50,100])for(const v of [-12,12])for(const h of [0,Math.PI]){
+     const coach=coachPart(u,v,h);
+     for(const p of standing)if(![0,1,2].some(k=>coach.hi[k]<=p.lo[k]+1e-6||p.hi[k]<=coach.lo[k]+1e-6))throw Error('coach intersects a Park & Ride part');
+   }
+   trains.push({id:'t1',distance:parkRailDistance,direction:1,state:'dwelling',riders:[],dwellUntil:1e9},
+     {id:'t2',distance:parkRailDistance,direction:-1,state:'dwelling',riders:[],dwellUntil:1e9});
+   const original=drawDesignFPV;let claimed=0;
+   drawDesignFPV=(b,design,cam,dist,coaches=[])=>{if(b===parkRide)claimed+=coaches.length;return original(b,design,cam,dist,coaches);};
+   const [x,y]=nodeXY(parkRide.accessId);
+   renderFPV({...cars[0],pos:{x,y},heading:d.angle,_displayHeading:d.angle});
+   if(claimed<4)throw Error('platform coaches should draw with the Park & Ride, got '+claimed);
+   render();`);
+}
+console.log('PASS: track-aligned Park & Ride clear of both tracks and its access road, with platform coaches in its painter order.');
+
+// The live graph plots only the current queue wait and queued requests. The
+// debug stream pops out from its own panel, map shortcuts cover the region,
+// center and controls, and the guide opens with the pause and POV tip.
+{
+ const {run,elements}=boot(4);
+ run('render=()=>{};renderCockpit=()=>{};dbg=()=>{};speedMult=20;for(let i=0;i<30;i++)tick();');
+ assert.equal(run('GRAPH_SERIES.map(s=>s.f).join()'),'w,q');
+ assert.equal(run('Object.keys(metricsHist.at(-1)).sort().join()'),'q,w');
+ assert.equal(run('metricsHist.at(-1).q'),run('queue.length'));
+ assert.equal(run('metricsHist.at(-1).w'),run('currentQueueWaitMinutes()'));
+ run(`queue.length=0;for(const car of cars)car.pickupQueue=[];
+   queue.push({requestedAt:simElapsed-3},{requestedAt:simElapsed-5});
+   cars[0].pickupQueue.push({requestedAt:simElapsed-7},{requestedAt:simElapsed-9,pickedUpAt:simElapsed-1});`);
+ assert.equal(run('currentQueueWaitMinutes()'),5);
+ assert.equal(elements.get('dbg-pop-inline').click,run('openDebugWindow'));
+ const html=readFileSync(new URL('../index.html',`file://${__filename}`),'utf8');
+ const nav=html.match(/<nav class="map-nav"[^>]*>(.*?)<\/nav>/)[1];
+ assert.deepEqual([...nav.matchAll(/href="#([^"]+)"/g)].map(m=>m[1]),['region-card','center-card','controls']);
+ const guide=html.slice(html.indexOf('<div class="guide-body">'));
+ assert.ok(guide.indexOf('Press Pause')>=0 && guide.indexOf('Press Pause')<guide.indexOf('<h3>'));
+}
+console.log('PASS: queue-wait/queued live graph, debug pop-out button, trimmed map shortcuts and guide pause tip.');
+
 // Driver POV rides the Juniper Commons bus all day. Tapped cars override it,
 // and it changes bus only when the followed one leaves the fleet.
 {
@@ -334,6 +388,12 @@ console.log('PASS: fourteen downtown designs inside their blocks, separable part
  run('startSpectate(cars.find(c=>c.kind==="sedan"));tick();');
  assert.equal(run('cockpitCar.kind'),'sedan');
  run('stopSpectate();tick();');
+ assert.equal(run('cockpitCar.id'),bus);
+ // Switching vehicles while paused keeps the simulation paused.
+ run('setSimulationPaused(true);startSpectate(cars.find(c=>c.kind==="shuttle"));tick();');
+ assert.equal(run('paused'),true);
+ assert.equal(run('cockpitCar.kind'),'shuttle');
+ run('stopSpectate();setSimulationPaused(false);tick();');
  assert.equal(run('cockpitCar.id'),bus);
  elements.get('reset').click();
  run('tick()');
